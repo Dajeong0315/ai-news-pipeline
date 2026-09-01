@@ -6,15 +6,17 @@
 
 | 단계 | 내용 | 상태 |
 |---|---|---|
-| 0 | 저장소 초기화 (git/.gitignore/.env.example) | 진행 중 |
+| 0 | 저장소 초기화 (git/.gitignore/.env.example) | 완료 (로컬 git init만, GitHub 원격 저장소는 운영자가 직접 생성 필요) |
 | 1 | 개발 환경 준비 (venv, requirements.txt) | 완료 |
-| 2 | 뉴스 수집 스크립트 (collect_news.py, keywords.json) | 완료 (코드), 실DB 저장 미검증 (Supabase 미가입) |
-| 3 | 정제 로직 (clean_news.py) | 완료 (코드), 실DB 검증 미완료 |
-| 4 | 텔레그램 승인 시스템 | 미착수 |
-| 5 | 프롬프트 변환 (generate_prompt.py) | 미착수 |
-| 6 | 이미지 생성 (generate_image.py) | 미착수 |
-| 7 | 이미지 검증 (verify_image.py) | 미착수 |
-| 8 | 카드 합성 (compose_card.py) | 미착수 |
+| 2 | 뉴스 수집 스크립트 (collect_news.py, keywords.json) | 코드 완료, RSS 수집 스모크 테스트 통과. 실제 Supabase 저장은 미검증(계정 없음) |
+| 3 | 정제 로직 (clean_news.py) | 코드 완료, 실DB 검증 미완료(계정 없음) |
+| 4 | 텔레그램 승인 시스템 (telegram_client.py, send_candidates.py, webhook/) | 코드 완료, 배포/실계정 테스트 미완료 |
+| 5 | 프롬프트 변환 (generate_prompt.py) | 코드 완료, 실API 호출 미검증 |
+| 6 | 이미지 생성 (generate_image.py) | 코드 완료, 실API 호출 미검증 |
+| 7 | 이미지 검증 (verify_image.py) | 코드 완료, 실API 호출 미검증 |
+| 8 | 카드 합성 (compose_card.py) | 코드 완료, **로컬 더미 이미지로 렌더링 테스트 통과**(제목 축약/줄바꿈/한글 폰트 정상 확인) |
+
+전체 실행 편의를 위해 `run_daily.py collect` / `run_daily.py publish` 오케스트레이터 추가 (0~8단계 코드 자체는 모두 작성 완료, 다음 병목은 전부 "운영자의 외부 서비스 가입/키 발급").
 
 ## 외부 서비스 계정/키 발급 상태
 
@@ -24,10 +26,10 @@
 |---|---|---|---|
 | Telegram Bot (BotFather) | 미완료 | 미완료 | 운영자가 직접 가입/생성 필요 |
 | Supabase | 미완료 | 미완료 | 운영자가 직접 가입 필요, 스키마는 `supabase_schema.sql`에 준비됨 |
-| Vercel | 미완료 | 미완료 | 웹훅 배포용, 운영자가 직접 가입 필요 |
+| Vercel | 미완료 | 미완료 | 웹훅 배포용, 운영자가 직접 가입 필요. 배포 대상: `webhook/` 디렉터리 |
 | Cloudflare (Workers AI) | 미완료 | 미완료 | 운영자가 직접 가입 필요 |
 | GLM API (Zhipu/Z.AI) | 미완료 | 미완료 | 운영자가 직접 가입 필요 |
-| GitHub (원격 저장소) | 미완료 | - | `gh` CLI 미설치 → 로컬 git init만 진행, 원격 저장소는 운영자가 브라우저에서 직접 생성 후 `git remote add origin <url>` 필요 |
+| GitHub (원격 저장소) | 미완료 | - | `gh` CLI 미설치 → 로컬 git init만 진행, 원격 저장소는 운영자가 브라우저에서 직접 생성 후 연결 필요 |
 
 ## 확인한 무료 티어 한도 (2026-09 기준, 웹 검색으로 확인 — 실제 계정 생성 후 대시보드에서 재확인 필요)
 
@@ -50,7 +52,7 @@
 
 ### Vercel (Hobby 플랜)
 - 서버리스 함수 호출 100만회/월, 함수 CPU 4시간/월, 함수 메모리 360GB-시간/월, Fast Data Transfer 100GB/월.
-- 서버리스 함수 **최대 실행시간 60초** — 텔레그램 웹훅 응답은 즉시 반환하는 구조로 설계해야 함(무거운 작업은 웹훅 안에서 하지 않고 Supabase 업데이트만 하도록 함).
+- 서버리스 함수 **최대 실행시간 60초** — 텔레그램 웹훅 응답은 즉시 반환하는 구조로 설계해야 함(무거운 작업은 웹훅 안에서 하지 않고 Supabase 업데이트만 하도록 함). `webhook/api/index.py`가 이 원칙대로 구현됨(승인/거절 처리만, 이미지 생성 등 무거운 작업 없음).
 - Hobby 플랜은 개인/비상업적 용도로 제한됨 — 인스타 계정 운영이 상업적으로 커지면 Pro 전환 검토 필요(확장판 이슈로 기록).
 - 소스: [Vercel Free Tier Limits 2026](https://deploywise.dev/blog/vercel-free-tier-limits-2026)
 
@@ -70,18 +72,30 @@
 - **한계**: Google News RSS의 `summary` 필드는 실제 기사 본문 요약이 아니라 "제목 + 언론사명"을 재구성한 짧은 문자열임(RSS 자체의 한계, 원문 스크래핑을 하지 않는 한 개선 불가). 따라서 `MIN_LENGTH` 필터는 사실상 "제목이 지나치게 짧은 저품질 기사"를 걸러내는 용도에 가깝다. 필요시 향후 원문 URL을 별도로 스크래핑해 실제 본문 길이를 확보하는 방향으로 확장 가능(확장판 이슈로 기록 가능).
 - 중복 제거는 카테고리 내에서만 수행(그리디 클러스터링, `rapidfuzz.fuzz.token_sort_ratio` 기준 `DEDUP_SIMILARITY_THRESHOLD`=85 기본값). 대표 기사는 그룹 내 `published_at`이 가장 이른 기사로 선정.
 
+## 텔레그램 승인 시스템 관련 설계 결정
+
+- 웹훅(`webhook/api/index.py`)은 Vercel 서버리스 함수의 60초 제한과 콜드스타트를 고려해, 루트 프로젝트의 `db.py`(supabase-py) 대신 Supabase REST API를 `httpx`로 직접 호출하는 완전히 독립된 모듈로 작성함. 배포 시 `webhook/` 디렉터리를 Vercel 프로젝트 루트로 지정.
+- "카테고리당 이미 승인된 건이 있으면 안내만" 로직은 `news_items.collected_at`이 한국시간 기준 오늘 자정 이후이고 `status='approved'`인 항목이 해당 카테고리에 있는지로 판단(별도의 "오늘 배치" 개념 컬럼이 없어 `collected_at`을 대리 지표로 사용).
+
+## 이미지 생성/검증/합성 관련 설계 결정
+
+- Gemma Vision 호출 포맷은 Cloudflare의 최신 멀티모달 chat `messages` + `image_url`(base64 data URL) 형식으로 작성함. **미검증** — 실제 계정 생성 후 Cloudflare 문서/응답으로 정확한 요청 스키마 재확인 필요(모델별로 입력 포맷이 다를 수 있음).
+- 카드 합성(`compose_card.py`)은 Windows 기본 한글 폰트(맑은 고딕, `C:/Windows/Fonts/malgun.ttf`)를 기본값으로 사용. 다른 OS/서버에 배포 시 `.env`의 `FONT_PATH`/`FONT_BOLD_PATH`를 실제 폰트 경로로 재설정해야 함.
+- 제목 축약(`truncate_title`)과 카드 렌더링(`compose`)은 **더미 배경 이미지로 로컬 테스트 완료** — 한글 텍스트 깨짐 없이 정상 렌더링, 30자 제한 준수 확인.
+
 ## 남은 이슈 / TODO
 
-1. 운영자가 아래 5개 서비스에 직접 가입하고 `.env`에 키를 채워야 다음 단계(4~8) 진행 가능:
+1. 운영자가 아래 5개 서비스에 직접 가입하고 `.env`에 키를 채워야 end-to-end 실행 가능:
    - Telegram Bot (BotFather에서 `/newbot`)
    - Supabase (프로젝트 생성 후 `supabase_schema.sql` 실행)
-   - Vercel (웹훅 배포용)
+   - Vercel (`webhook/` 디렉터리 배포, 환경변수 설정 후 `python set_telegram_webhook.py <배포URL>/webhook` 실행)
    - Cloudflare (Workers AI 활성화)
    - GLM API (z.ai 가입 후 API 키 발급)
 2. GitHub 원격 저장소: `gh` CLI가 이 환경에 설치돼 있지 않아 로컬 `git init`만 진행함. 운영자가 GitHub 웹에서 저장소(`econ-stock-cardnews-bot`, private 추천)를 만들고 아래 명령으로 연결해야 함:
    ```bash
    git remote add origin <저장소 URL>
-   git push -u origin main
+   git push -u origin master
    ```
-3. `collect_news.py`, `clean_news.py`는 실제 Supabase 프로젝트가 없어 RSS 수집 자체만 스모크 테스트 완료(정상 동작 확인), DB 저장/정제 파이프라인 end-to-end는 미검증.
-4. Gemma Vision의 실제 뉴런 소모량 등 Cloudflare 세부 비용은 계정 생성 후 재확인 필요.
+3. `collect_news.py`, `clean_news.py`, `send_candidates.py`, `generate_prompt.py`, `generate_image.py`, `verify_image.py`는 실제 계정이 없어 코드 리뷰/스모크 테스트(RSS 수집)까지만 완료. Supabase/Telegram/GLM/Cloudflare 연동 end-to-end는 미검증.
+4. Gemma Vision의 정확한 요청 스키마 및 실제 뉴런 소모량은 계정 생성 후 재확인 필요.
+5. 완료 판단 기준의 "카테고리 자동 분류 샘플 10건 수동 검토", "동일 사건 기사 2건 dedup 그룹핑 확인", "텔레그램 승인 end-to-end 확인" 등은 모두 실제 계정 발급 이후 진행 가능.
