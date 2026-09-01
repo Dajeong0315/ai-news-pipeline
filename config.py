@@ -14,11 +14,7 @@ TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
 CLOUDFLARE_API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "")
 
-GLM_API_KEY = os.environ.get("GLM_API_KEY", "")
-GLM_MODEL = os.environ.get("GLM_MODEL", "glm-4-flash")
-GLM_API_BASE_URL = os.environ.get(
-    "GLM_API_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-)
+CLOUDFLARE_TEXT_MODEL = os.environ.get("CLOUDFLARE_TEXT_MODEL", "@cf/meta/llama-3.1-8b-instruct")
 
 MAX_AGE_HOURS = float(os.environ.get("MAX_AGE_HOURS", 24))
 MIN_LENGTH = int(os.environ.get("MIN_LENGTH", 50))

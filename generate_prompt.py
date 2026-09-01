@@ -1,4 +1,8 @@
-"""승인된 뉴스(status='approved')를 GLM API로 영어 이미지 프롬프트로 변환한다.
+"""승인된 뉴스(status='approved')를 Cloudflare Workers AI 텍스트 모델로 영어 이미지 프롬프트로 변환한다.
+
+원래 스펙은 GLM API(Zhipu)를 사용하도록 돼 있었으나, GLM의 무료 티어가 결제수단
+등록을 요구해 이미 계정이 있는 Cloudflare Workers AI로 대체했다("GLM-4.7-Flash
+또는 상응 모델" 허용 문구에 따름). FLUX/Gemma Vision과 같은 계정·토큰을 재사용한다.
 
 카드 뉴스 배경 이미지 생성용 프롬프트이므로, 텍스트/글자가 들어가지 않는
 추상적·상징적 배경 이미지를 요청하도록 시스템 프롬프트를 구성한다.
@@ -60,22 +64,26 @@ def fetch_approved_without_prompt() -> list[dict]:
     return [it for it in approved if it["id"] not in done_ids]
 
 
-def call_glm(title: str, category: str) -> str:
+def call_llm(title: str, category: str) -> str:
     hint = CATEGORY_HINT.get(category, "")
     user_content = f"Headline: {title}\nCategory: {hint}"
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/"
+        f"{config.CLOUDFLARE_ACCOUNT_ID}/ai/run/{config.CLOUDFLARE_TEXT_MODEL}"
+    )
+    headers = {"Authorization": f"Bearer {config.CLOUDFLARE_API_TOKEN}"}
     payload = {
-        "model": config.GLM_MODEL,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
         ],
-        "temperature": 0.7,
     }
-    headers = {"Authorization": f"Bearer {config.GLM_API_KEY}"}
-    resp = httpx.post(config.GLM_API_BASE_URL, json=payload, headers=headers, timeout=30)
+    resp = httpx.post(url, json=payload, headers=headers, timeout=30)
     resp.raise_for_status()
     data = resp.json()
-    return data["choices"][0]["message"]["content"].strip()
+    if not data.get("success"):
+        raise RuntimeError(f"프롬프트 생성 실패: {data.get('errors')}")
+    return data["result"]["response"].strip()
 
 
 def main():
@@ -85,9 +93,9 @@ def main():
     client = get_client()
     for item in items:
         try:
-            prompt_text = call_glm(item["title"], item["category"])
+            prompt_text = call_llm(item["title"], item["category"])
         except Exception as e:
-            log.error("GLM 호출 실패 [id=%s]: %s", item["id"], e)
+            log.error("프롬프트 생성 호출 실패 [id=%s]: %s", item["id"], e)
             continue
 
         if not prompt_text:

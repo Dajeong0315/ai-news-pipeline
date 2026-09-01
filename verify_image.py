@@ -17,7 +17,7 @@ import config
 import telegram_client
 from db import get_client
 from generate_image import generate_and_store
-from generate_prompt import call_glm
+from generate_prompt import call_llm
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("verify_image")
@@ -107,7 +107,7 @@ def verify_one(row: dict):
         return
 
     try:
-        new_prompt = call_glm(title, category)
+        new_prompt = call_llm(title, category)
         client.table("image_prompts").insert(
             {"news_item_id": row["news_item_id"], "prompt_text": new_prompt}
         ).execute()

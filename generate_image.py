@@ -1,4 +1,4 @@
-"""GLM이 만든 영어 프롬프트로 Cloudflare Workers AI(FLUX)에서 배경 이미지를 생성한다.
+"""generate_prompt.py가 만든 영어 프롬프트로 Cloudflare Workers AI(FLUX)에서 배경 이미지를 생성한다.
 
 image_prompts 테이블에 프롬프트가 있지만 아직 generated_images가 없는 뉴스에 대해
 이미지를 생성하고 output/YYYY-MM-DD/backgrounds/{news_item_id}.png로 저장한다.
