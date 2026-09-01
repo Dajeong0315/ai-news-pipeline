@@ -8,7 +8,7 @@ output/YYYY-MM-DD/card_{category}.png로 저장하고 cards 테이블에 기록�
 """
 
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -32,6 +32,7 @@ PADDING = 60
 BOX_COLOR = (6, 8, 14)
 BOX_ALPHA = 170
 BOX_TOP_PAD = 36
+KST = timezone(timedelta(hours=9))
 
 
 def truncate_title(title: str, max_chars: int = config.TITLE_MAX_CHARS) -> str:
@@ -61,7 +62,41 @@ def truncate_title(title: str, max_chars: int = config.TITLE_MAX_CHARS) -> str:
     return result
 
 
-def fetch_card_source(category: str) -> dict | None:
+def get_allowed_quota(category: str) -> int:
+    """카테고리별 오늘 발행 가능 매수를 계산한다 (확장판: 이월 큐 로직).
+
+    최근 카드가 없었던 연속 일수(최대 config.MAX_BACKLOG_DAYS)를 "밀린 날짜"로
+    보고, 오늘은 그만큼 +1(정상 1장)을 더 발행할 수 있게 한다. 웹훅의 승인
+    개수 제한도 동일한 함수(REST 버전, webhook/api/index.py)로 계산한다.
+    """
+    client = get_client()
+    rows = (
+        client.table("cards")
+        .select("created_at")
+        .eq("category", category)
+        .order("created_at", desc=True)
+        .limit(config.MAX_BACKLOG_DAYS + 5)
+        .execute()
+        .data
+        or []
+    )
+    have_dates = {
+        datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).astimezone(KST).date()
+        for r in rows
+    }
+    if not have_dates:
+        return 1  # 발행 이력이 아예 없는 카테고리는 이월 개념을 적용하지 않는다
+
+    earliest_date = min(have_dates)
+    missed = 0
+    day = datetime.now(KST).date() - timedelta(days=1)
+    while missed < config.MAX_BACKLOG_DAYS and day >= earliest_date and day not in have_dates:
+        missed += 1
+        day -= timedelta(days=1)
+    return missed + 1
+
+
+def fetch_card_sources(category: str, limit: int) -> list[dict]:
     client = get_client()
     news_items = (
         client.table("news_items")
@@ -73,7 +108,7 @@ def fetch_card_source(category: str) -> dict | None:
         or []
     )
     if not news_items:
-        return None
+        return []
 
     news_ids = [n["id"] for n in news_items]
     images = (
@@ -86,12 +121,22 @@ def fetch_card_source(category: str) -> dict | None:
         .data
         or []
     )
-    if not images:
-        return None
 
-    image = images[0]
-    news = next(n for n in news_items if n["id"] == image["news_item_id"])
-    return {"news_item_id": news["id"], "title": news["title"], "image_path": image["image_path"]}
+    sources, seen_news_ids = [], set()
+    for image in images:
+        news_item_id = image["news_item_id"]
+        if news_item_id in seen_news_ids:
+            continue
+        news = next((n for n in news_items if n["id"] == news_item_id), None)
+        if not news:
+            continue
+        sources.append(
+            {"news_item_id": news["id"], "title": news["title"], "image_path": image["image_path"]}
+        )
+        seen_news_ids.add(news_item_id)
+        if len(sources) >= limit:
+            break
+    return sources
 
 
 def _text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont) -> int:
@@ -223,38 +268,45 @@ def compose(background_path: str, title: str, category: str, output_path: Path):
 def main():
     out_dir = Path("output") / date.today().isoformat()
     client = get_client()
+    publish_order = 1
 
-    for order, category in enumerate(config.CATEGORIES, start=1):
-        source = fetch_card_source(category)
-        if not source:
+    for category in config.CATEGORIES:
+        quota = get_allowed_quota(category)
+        sources = fetch_card_sources(category, quota)
+        if not sources:
             log.warning("[%s] 합성할 검증 통과 이미지 없음, 건너뜀", category)
             continue
+        if quota > 1:
+            log.info("[%s] 이월분 포함 오늘 발행 가능 %d장, 실제 소스 %d건", category, quota, len(sources))
 
-        try:
-            summarized = summarize_title(source["title"], category, config.TITLE_MAX_CHARS)
-        except Exception as e:
-            log.warning("[%s] 제목 요약 실패(%s), 원문을 잘라서 사용", category, e)
-            summarized = source["title"]
-        final_title = truncate_title(summarized)  # 글자수 제한을 반드시 지키도록 하는 안전망
-        output_path = out_dir / f"card_{category}.png"
+        for idx, source in enumerate(sources):
+            try:
+                summarized = summarize_title(source["title"], category, config.TITLE_MAX_CHARS)
+            except Exception as e:
+                log.warning("[%s] 제목 요약 실패(%s), 원문을 잘라서 사용", category, e)
+                summarized = source["title"]
+            final_title = truncate_title(summarized)  # 글자수 제한을 반드시 지키도록 하는 안전망
+            suffix = "" if idx == 0 else f"_{idx + 1}"
+            output_path = out_dir / f"card_{category}{suffix}.png"
 
-        try:
-            compose(source["image_path"], final_title, category, output_path)
-        except Exception as e:
-            log.error("[%s] 카드 합성 실패: %s", category, e)
-            continue
+            try:
+                compose(source["image_path"], final_title, category, output_path)
+            except Exception as e:
+                log.error("[%s] 카드 합성 실패: %s", category, e)
+                continue
 
-        client.table("cards").insert(
-            {
-                "news_item_id": source["news_item_id"],
-                "category": category,
-                "final_title": final_title,
-                "image_path": str(output_path),
-                "publish_order": order,
-                "published": False,
-            }
-        ).execute()
-        log.info("[%s] 카드 생성 완료: %s", category, output_path)
+            client.table("cards").insert(
+                {
+                    "news_item_id": source["news_item_id"],
+                    "category": category,
+                    "final_title": final_title,
+                    "image_path": str(output_path),
+                    "publish_order": publish_order,
+                    "published": False,
+                }
+            ).execute()
+            publish_order += 1
+            log.info("[%s] 카드 생성 완료: %s", category, output_path)
 
 
 if __name__ == "__main__":

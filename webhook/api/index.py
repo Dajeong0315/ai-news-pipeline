@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
@@ -20,6 +21,7 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+MAX_BACKLOG_DAYS = int(os.environ.get("MAX_BACKLOG_DAYS", 3))
 
 KST = timezone(timedelta(hours=9))
 
@@ -61,7 +63,35 @@ def today_start_utc_iso() -> str:
     return start_kst.astimezone(timezone.utc).isoformat()
 
 
-def category_already_approved_today(category: str) -> bool:
+def get_allowed_quota(category: str) -> int:
+    """이월 큐 로직: 최근 카드 발행이 없었던 연속 일수만큼 오늘 승인 가능
+    개수를 늘려준다. compose_card.py의 동일 로직(REST 버전)."""
+    rows = sb_get(
+        "cards",
+        {
+            "select": "created_at",
+            "category": f"eq.{category}",
+            "order": "created_at.desc",
+            "limit": str(MAX_BACKLOG_DAYS + 5),
+        },
+    )
+    have_dates = {
+        datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).astimezone(KST).date()
+        for r in rows
+    }
+    if not have_dates:
+        return 1
+
+    earliest_date = min(have_dates)
+    missed = 0
+    day = datetime.now(KST).date() - timedelta(days=1)
+    while missed < MAX_BACKLOG_DAYS and day >= earliest_date and day not in have_dates:
+        missed += 1
+        day -= timedelta(days=1)
+    return missed + 1
+
+
+def category_quota_reached(category: str) -> bool:
     rows = sb_get(
         "news_items",
         {
@@ -71,12 +101,53 @@ def category_already_approved_today(category: str) -> bool:
             "collected_at": f"gte.{today_start_utc_iso()}",
         },
     )
-    return len(rows) > 0
+    return len(rows) >= get_allowed_quota(category)
 
 
 @app.get("/")
 async def health():
     return {"status": "ok"}
+
+
+CATEGORY_LABELS = {"index_macro": "지수/거시", "stock": "개별종목", "policy_industry": "정책/산업"}
+
+
+@app.get("/status")
+async def status_page():
+    """오늘의 파이프라인 진행 상황을 보여주는 최소 대시보드(텔레그램 병행용)."""
+    start = today_start_utc_iso()
+    cards = sb_get("cards", {"select": "category,final_title,published", "created_at": f"gte.{start}"})
+    approved = sb_get(
+        "news_items",
+        {"select": "category,title", "status": "eq.approved", "collected_at": f"gte.{start}"},
+    )
+
+    rows_html = ""
+    for category in ("index_macro", "stock", "policy_industry"):
+        cat_cards = [c for c in cards if c["category"] == category]
+        cat_approved = [a for a in approved if a["category"] == category]
+        if cat_cards:
+            state = "✅ 카드 완성" + (" (인스타 업로드됨)" if all(c["published"] for c in cat_cards) else "")
+            title = ", ".join(c["final_title"] for c in cat_cards)
+        elif cat_approved:
+            state = "🟡 승인됨, 카드 생성 대기"
+            title = ", ".join(a["title"] for a in cat_approved)
+        else:
+            state = "⏳ 승인 대기중"
+            title = "-"
+        label = CATEGORY_LABELS.get(category, category)
+        rows_html += f"<tr><td>{label}</td><td>{state}</td><td>{title}</td></tr>"
+
+    html = f"""
+    <html><head><meta charset="utf-8"><title>카드뉴스 오늘 현황</title>
+    <style>body{{font-family:sans-serif;padding:24px}}table{{border-collapse:collapse;width:100%}}
+    td,th{{border:1px solid #ddd;padding:8px;text-align:left}}th{{background:#f4f4f4}}</style>
+    </head><body>
+    <h2>오늘의 카드뉴스 진행 상황</h2>
+    <table><tr><th>카테고리</th><th>상태</th><th>제목</th></tr>{rows_html}</table>
+    </body></html>
+    """
+    return HTMLResponse(html)
 
 
 @app.post("/api/index")
@@ -113,12 +184,12 @@ async def telegram_webhook(
     item = items[0]
 
     if action == "approve":
-        if category_already_approved_today(item["category"]):
+        if category_quota_reached(item["category"]):
             tg_call(
                 "answerCallbackQuery",
                 {
                     "callback_query_id": callback_id,
-                    "text": "이미 오늘 이 카테고리는 승인 완료되었습니다.",
+                    "text": "이미 오늘 이 카테고리는 승인 가능 건수만큼 승인 완료되었습니다.",
                     "show_alert": True,
                 },
             )
