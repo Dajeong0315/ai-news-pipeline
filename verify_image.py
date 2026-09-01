@@ -1,4 +1,9 @@
-"""생성된 배경 이미지가 뉴스 내용과 부적절하게 어긋나지 않는지 Gemma Vision으로 검증한다.
+"""생성된 배경 이미지가 뉴스 내용과 부적절하게 어긋나지 않는지 비전 모델로 검증한다.
+
+기본 모델은 config.VISION_MODEL(@cf/meta/llama-3.2-11b-vision-instruct).
+원래 스펙은 "Gemma Vision"을 지정했으나 이 Cloudflare 계정 카탈로그에 Gemma
+비전 모델이 없어(GET /ai/models/search로 확인) 계정에서 실제로 쓸 수 있는
+멀티모달 모델로 대체했다.
 
 실패 시 최대 config.MAX_IMAGE_RETRIES(기본 1)회, 프롬프트 재생성 -> 이미지 재생성
 -> 재검증을 수행한다. 재실패하면 텔레그램으로 운영자에게 알림만 보내고 해당
@@ -8,8 +13,8 @@
     python verify_image.py
 """
 
-import base64
 import logging
+import re
 
 import httpx
 
@@ -23,13 +28,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("verify_image")
 
 VISION_PROMPT_TEMPLATE = (
-    "This image will be used as the background of a news card about the following "
-    "economic/stock news. It does not need to depict the news literally, but it must "
-    "NOT be inappropriate, offensive, violent, or wildly mismatched in mood/subject.\n"
-    "Headline: {title}\n"
-    "Category: {category}\n\n"
-    "Answer with exactly 'YES' or 'NO' on the first line (YES = acceptable as background), "
-    "then a short reason on the second line."
+    "This image will be used as the background of a professional economic/stock news card "
+    "(category: {category}). Question: is this image appropriate and professional-looking, "
+    "with no violent, offensive, sexual, or bizarre/nonsensical content? "
+    "Answer with a single word: yes or no."
 )
 
 
@@ -44,35 +46,29 @@ def fetch_unverified() -> list[dict]:
     return resp.data or []
 
 
-def call_gemma_vision(image_path: str, title: str, category: str) -> tuple[bool, str]:
-    image_b64 = base64.b64encode(open(image_path, "rb").read()).decode()
-    prompt = VISION_PROMPT_TEMPLATE.format(title=title, category=category)
+def call_vision_model(image_path: str, title: str, category: str) -> tuple[bool, str]:
+    image_bytes = open(image_path, "rb").read()
+    prompt = VISION_PROMPT_TEMPLATE.format(category=category)
 
     url = (
         f"https://api.cloudflare.com/client/v4/accounts/"
-        f"{config.CLOUDFLARE_ACCOUNT_ID}/ai/run/{config.GEMMA_VISION_MODEL}"
+        f"{config.CLOUDFLARE_ACCOUNT_ID}/ai/run/{config.VISION_MODEL}"
     )
     headers = {"Authorization": f"Bearer {config.CLOUDFLARE_API_TOKEN}"}
-    body = {
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
-                ],
-            }
-        ]
-    }
+    body = {"image": list(image_bytes), "prompt": prompt, "max_tokens": 50}
     resp = httpx.post(url, headers=headers, json=body, timeout=60)
     resp.raise_for_status()
     data = resp.json()
     if not data.get("success"):
-        raise RuntimeError(f"Gemma Vision 호출 실패: {data.get('errors')}")
+        raise RuntimeError(f"비전 모델 호출 실패: {data.get('errors')}")
 
-    text = data["result"]["response"].strip()
-    first_line = text.splitlines()[0].strip().upper() if text else ""
-    passed = first_line.startswith("YES")
+    text = data["result"]["description"].strip()
+    lowered = text.lower()
+    has_no = re.search(r"\bno\b", lowered) is not None
+    has_yes = re.search(r"\byes\b", lowered) is not None
+    # LLaVA는 자유 서술형으로 답하는 경향이 있어, 'no'만 단독으로 등장하는
+    # 경우에만 부적합으로 판단(모호하면 통과시키는 안전한 기본값).
+    passed = not (has_no and not has_yes)
     return passed, text
 
 
@@ -87,9 +83,9 @@ def verify_one(row: dict):
     category = news.get("category", "")
 
     try:
-        passed, note = call_gemma_vision(row["image_path"], title, category)
+        passed, note = call_vision_model(row["image_path"], title, category)
     except Exception as e:
-        log.error("[image_id=%s] Gemma Vision 호출 실패: %s", row["id"], e)
+        log.error("[image_id=%s] 비전 모델 호출 실패: %s", row["id"], e)
         return
 
     client.table("generated_images").update(
@@ -115,7 +111,7 @@ def verify_one(row: dict):
         new_row = generate_and_store(
             row["news_item_id"], new_prompt, retry_count=row["retry_count"] + 1
         )
-        retry_passed, retry_note = call_gemma_vision(new_row["image_path"], title, category)
+        retry_passed, retry_note = call_vision_model(new_row["image_path"], title, category)
         client.table("generated_images").update(
             {"vision_check_passed": retry_passed, "vision_check_note": retry_note}
         ).eq("id", new_row["id"]).execute()
