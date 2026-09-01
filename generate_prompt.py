@@ -13,10 +13,9 @@
 
 import logging
 
-import httpx
-
 import config
 from db import get_client
+from http_retry import post_with_retry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("generate_prompt")
@@ -78,7 +77,7 @@ def _call_text_model(system_prompt: str, user_content: str, max_tokens: int | No
     }
     if max_tokens:
         payload["max_tokens"] = max_tokens
-    resp = httpx.post(url, json=payload, headers=headers, timeout=30)
+    resp = post_with_retry(url, json=payload, headers=headers, timeout=30)
     resp.raise_for_status()
     data = resp.json()
     if not data.get("success"):

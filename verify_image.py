@@ -16,13 +16,12 @@
 import logging
 import re
 
-import httpx
-
 import config
 import telegram_client
 from db import get_client
 from generate_image import generate_and_store
 from generate_prompt import call_llm
+from http_retry import post_with_retry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("verify_image")
@@ -56,7 +55,7 @@ def call_vision_model(image_path: str, title: str, category: str) -> tuple[bool,
     )
     headers = {"Authorization": f"Bearer {config.CLOUDFLARE_API_TOKEN}"}
     body = {"image": list(image_bytes), "prompt": prompt, "max_tokens": 50}
-    resp = httpx.post(url, headers=headers, json=body, timeout=60)
+    resp = post_with_retry(url, headers=headers, json=body, timeout=60)
     resp.raise_for_status()
     data = resp.json()
     if not data.get("success"):
@@ -108,8 +107,12 @@ def verify_one(row: dict):
             {"news_item_id": row["news_item_id"], "prompt_text": new_prompt}
         ).execute()
 
+        # 재시도는 같은 모델이 또 실패할 가능성을 줄이기 위해 대체 FLUX 모델을 사용한다
         new_row = generate_and_store(
-            row["news_item_id"], new_prompt, retry_count=row["retry_count"] + 1
+            row["news_item_id"],
+            new_prompt,
+            retry_count=row["retry_count"] + 1,
+            model=config.FLUX_FALLBACK_MODEL,
         )
         retry_passed, retry_note = call_vision_model(new_row["image_path"], title, category)
         client.table("generated_images").update(

@@ -14,15 +14,12 @@ import logging
 from datetime import date
 from pathlib import Path
 
-import httpx
-
 import config
 from db import get_client
+from http_retry import post_with_retry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("generate_image")
-
-FLUX_MODEL = "@cf/black-forest-labs/flux-1-schnell"
 
 
 def output_dir(for_date: date | None = None) -> Path:
@@ -32,24 +29,32 @@ def output_dir(for_date: date | None = None) -> Path:
     return path
 
 
-def call_flux(prompt_text: str) -> bytes:
-    url = (
-        f"https://api.cloudflare.com/client/v4/accounts/"
-        f"{config.CLOUDFLARE_ACCOUNT_ID}/ai/run/{FLUX_MODEL}"
-    )
+def call_flux(prompt_text: str, model: str = config.FLUX_MODEL) -> bytes:
+    url = f"https://api.cloudflare.com/client/v4/accounts/{config.CLOUDFLARE_ACCOUNT_ID}/ai/run/{model}"
     headers = {"Authorization": f"Bearer {config.CLOUDFLARE_API_TOKEN}"}
-    resp = httpx.post(url, headers=headers, json={"prompt": prompt_text, "steps": 4}, timeout=60)
+    resp = post_with_retry(
+        url, headers=headers, json={"prompt": prompt_text, "steps": 4}, timeout=60
+    )
     resp.raise_for_status()
+
+    content_type = resp.headers.get("content-type", "")
+    if content_type.startswith("image/"):
+        # 일부 Text-to-Image 모델(예: stable-diffusion-xl-lightning)은 JSON이 아니라
+        # 이미지 바이너리를 그대로 응답 본문에 담아 돌려준다.
+        return resp.content
+
     data = resp.json()
     if not data.get("success"):
-        raise RuntimeError(f"FLUX 생성 실패: {data.get('errors')}")
+        raise RuntimeError(f"이미지 생성 실패({model}): {data.get('errors')}")
     b64_image = data["result"]["image"]
     return base64.b64decode(b64_image)
 
 
-def generate_and_store(news_item_id: int, prompt_text: str, retry_count: int = 0) -> dict:
+def generate_and_store(
+    news_item_id: int, prompt_text: str, retry_count: int = 0, model: str = config.FLUX_MODEL
+) -> dict:
     client = get_client()
-    image_bytes = call_flux(prompt_text)
+    image_bytes = call_flux(prompt_text, model=model)
 
     filename = f"{news_item_id}_{retry_count}.png" if retry_count else f"{news_item_id}.png"
     path = output_dir() / filename
