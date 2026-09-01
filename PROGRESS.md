@@ -4,13 +4,15 @@
 
 ## 요약
 
-**MVP 완료 판단 기준 전 항목 충족.** 0~8단계 end-to-end 실행 성공(뉴스
-수집 → 정제/중복제거 → 텔레그램 승인 → 프롬프트 변환 → FLUX 이미지 생성 →
-비전 검증 → Pillow 카드 합성), 카드 제목을 LLM으로 15자 요약 + 가독성 좋은
-디자인으로 개선, 중복 제거 임계값을 실측으로 재조정 및 검증, 카테고리
-분류 정확도 샘플 검토(90%), 매일 자동 실행용 Windows 작업 스케줄러 등록까지
-완료. 과정에서 발견한 버그/이슈는 "오늘 발견/수정한 버그"와 각 절의 설계
-결정에 기록.
+**MVP 완료 판단 기준 전 항목 충족 + 확장판 6개 항목 모두 연결.** 0~8단계
+end-to-end 실행 성공, 카드 제목 LLM 15자 요약 + 디자인 개선, 중복 제거
+임계값 재조정, 카테고리 분류 정확도 샘플 검토(90%), Windows 작업
+스케줄러 자동 실행에 이어 — 인스타그램 자동 업로드, 카테고리별 이월 큐,
+검색어 성과 분석, 이미지 재시도 백오프+대체 모델, 상태 대시보드, 사용량
+경고까지 확장판 6개 항목을 모두 코드로 연결함. 단, **인스타그램 업로드는
+Meta 앱 생성/페이지 연결/토큰 발급을 운영자가 직접 해야 실제로 동작**함
+(아래 "인스타그램 연동 — 운영자가 해야 할 일" 참고, 그 전까지는
+`publish_instagram.py`가 조용히 건너뜀).
 
 ## 단계별 완료 여부
 
@@ -147,6 +149,47 @@
 - 등록 시점이 마침 오늘 16:00 임박이라 첫 실행일을 내일(2026-09-02)로 미뤄, 오늘 이미 수동으로 완료한 사이클과 중복 실행되지 않도록 함.
 - **참고**: 작업 스케줄러 작업 삭제/수정이 필요하면 `Unregister-ScheduledTask -TaskName "EconCardNews-Collect"` (PowerShell) 또는 작업 스케줄러 GUI(`taskschd.msc`)에서 가능.
 
+## 확장판 6개 항목 연결 (2026-09-01)
+
+MVP 완료 후 운영자 요청으로 확장판 전체를 연결함. 우선순위 순서대로 정리:
+
+### 1. 인스타그램 자동 업로드 — **코드 완료, 운영자 설정 대기**
+- 카드 PNG를 Supabase Storage(`cards` 버킷, public으로 생성해 실제 공개 URL 접근 확인함)에 올리고, 그 공개 URL로 Instagram Graph API `POST /media` → `POST /media_publish` 순으로 게시(`instagram_client.py`, `publish_instagram.py`).
+- `run_daily.py publish`(=`run_publish.bat`, 매일 18:00 스케줄) 마지막 단계로 자동 실행되도록 연결됨. `INSTAGRAM_ACCESS_TOKEN`/`INSTAGRAM_BUSINESS_ACCOUNT_ID`가 `.env`에 없으면 조용히 건너뛰므로 다른 단계에 영향 없음(실제로 미설정 상태에서 정상 스킵 확인).
+- **운영자가 직접 해야 하는 부분** (계정 생성·OAuth 동의는 대신할 수 없음):
+  1. 인스타그램 계정 ✅ 이미 비즈니스 전환 완료
+  2. 인스타그램 계정과 연결된 **Facebook 페이지**가 없다면 인스타그램 앱 설정 > 계정 센터에서 Facebook 페이지 연결(또는 새로 생성)
+  3. https://developers.facebook.com/apps 에서 앱 생성(유형: "비즈니스"), 앱에 "Instagram" 제품 추가
+  4. https://developers.facebook.com/tools/explorer/ 에서 방금 만든 앱 선택 → 권한에 `pages_show_list`, `pages_read_engagement`, `instagram_basic`, `instagram_content_publish` 추가 → Generate Access Token
+  5. 발급받은 토큰으로 `python get_instagram_account_id.py <token>` 실행 → 연결된 페이지의 액세스 토큰과 인스타그램 비즈니스 계정 ID가 출력됨
+  6. (권장) 3번 앱의 App ID/Secret으로 단기 토큰을 장기(60일) 토큰으로 교환: `GET https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=<APP_ID>&client_secret=<APP_SECRET>&fb_exchange_token=<5번에서 받은 페이지 토큰>`
+  7. `.env`에 `INSTAGRAM_ACCESS_TOKEN`(6번 결과), `INSTAGRAM_BUSINESS_ACCOUNT_ID`(5번 결과) 입력
+  8. 장기 토큰도 60일 후 만료되므로, 주기적 재발급 필요(운영 규모가 커지면 System User 토큰으로 전환 고려 — 확장판 밖).
+
+### 2. 카테고리별 이월 큐 로직 — **완료**
+- `compose_card.py`와 `webhook/api/index.py`에 `get_allowed_quota()` 구현. 카테고리에 카드가 없었던 연속 일수(최대 `MAX_BACKLOG_DAYS`=3)만큼 다음날 승인/발행 가능 개수가 `1+밀린날수`로 늘어남. 발행 이력이 없는 카테고리는 이월 계산에서 제외(초기 오작동 방지, 실측으로 버그 발견 후 수정).
+- **Vercel 환경변수에도 `MAX_BACKLOG_DAYS` 추가 권장**(안 넣으면 기본값 3으로 동작하므로 필수는 아님).
+
+### 3. 검색어 성과 분석 — **완료, 수동/주기 실행 도구**
+- `keyword_stats.py`: 검색어별 수집 대비 승인률 집계, 콘솔+텔레그램 리포트. keywords.json 자동 수정은 하지 않음(운영자 판단 영역) — 승인 0건 검색어만 "교체 검토 대상"으로 알려줌. 스케줄에는 포함 안 함(원하면 운영자가 필요할 때 `python keyword_stats.py` 실행).
+
+### 4. 이미지 재시도/폴백 강화 — **완료**
+- `http_retry.py`의 `post_with_retry()`로 5xx/네트워크 오류에 지수 백오프 재시도(FLUX/비전/텍스트 모델 호출 전부 적용).
+- 비전 검증 실패 후 재시도 시 원래 모델(FLUX schnell) 대신 `config.FLUX_FALLBACK_MODEL`(`stable-diffusion-xl-lightning`)로 전환. 이 모델은 FLUX와 달리 JSON이 아니라 이미지 바이너리를 그대로 응답해서 `generate_image.call_flux()`에 content-type 분기 처리를 추가해야 했음(실측으로 발견).
+
+### 5. 텔레그램 병행 웹 대시보드 — **경량 버전만 구현**
+- 풀 대시보드 앱 대신, 이미 배포된 웹훅에 `GET /status` 엔드포인트만 추가(`https://ai-news-pipeline-mu.vercel.app/status`). 오늘 3개 카테고리의 승인/카드생성/업로드 상태를 간단한 HTML 표로 보여줌. 별도 배포 불필요(webhook과 같이 배포됨).
+- 별도 인증 없이 URL만 알면 누구나 볼 수 있음(오늘자 뉴스 제목 정도만 노출, 민감정보 없음) — 더 강한 보안이 필요하면 추후 보완.
+
+### 6. 무료 티어 사용량 모니터링/경고 — **완료(근사치 기반)**
+- Cloudflare가 실시간 잔여 뉴런을 조회하는 간단한 API를 제공하지 않아, 오늘 우리가 직접 남긴 레코드 수(`image_prompts`+`generated_images`+검증완료 건수)를 호출량 대리 지표로 사용. `SAFE_DAILY_CLOUDFLARE_CALLS`(기본 30, 평소 9회 안팎) 초과 시 텔레그램 경고. `run_daily.py publish`의 마지막 단계로 자동 실행.
+- 실측: 오늘 정상 실행 기준 텍스트 3 + FLUX 3 + 비전 3 = 9회로, 안전선 대비 여유 충분히 확인.
+
+## 배포 시 확인할 것
+
+- 웹훅 코드(`webhook/api/index.py`)가 이월 큐 로직 + `/status` 엔드포인트로 바뀌었으므로, Vercel이 GitHub push에 자동 배포되도록 연결돼 있지 않다면 **수동으로 재배포 필요**.
+- Vercel 프로젝트 환경변수에 `MAX_BACKLOG_DAYS`(선택, 기본 3)도 추가해두면 로컬 `.env`와 동일하게 맞출 수 있음.
+
 ## 남은 이슈 / TODO
 
 1. Cloudflare 뉴런 실제 소모량은 대시보드(Cloudflare 콘솔 → Workers AI → Usage)에서 직접 확인 권장 — API 응답 자체에는 안 찍힘.
@@ -154,3 +197,5 @@
 3. `DEDUP_SIMILARITY_THRESHOLD=70`은 안전 마진이 넓지 않으므로(가장 가까운 오탐 후보 64.3점 vs 임계값 70점) 운영하면서 그룹핑 결과를 가끔 육안 점검 권장.
 4. 자동 스케줄이 내일부터 실제로 잘 도는지 최소 1일차는 `logs/collect.log`, `logs/publish.log`로 확인 필요.
 5. 카테고리 분류 오분류 사례(검색어 "코스닥"인데 개별 종목 얘기인 경우 등)가 발생할 수 있음 — 빈도가 늘면 `keywords.json` 조정 또는 확장판에서 본문 기반 재분류 고려.
+6. **인스타그램 연동 완성을 위해 위 "확장판 1번"의 운영자 설정 단계 진행 필요** — 완료 전까지는 카드만 생성되고 업로드는 건너뛰어짐(데이터 손실 없음, `cards.published=false`로 남아있어 나중에 토큰만 넣으면 `python publish_instagram.py` 수동 실행으로 소급 업로드 가능).
+7. Vercel 웹훅 재배포 여부 확인(위 "배포 시 확인할 것" 참고) — 재배포 전까지는 이월 큐 로직과 `/status`가 실제 서버에는 반영 안 됨.
