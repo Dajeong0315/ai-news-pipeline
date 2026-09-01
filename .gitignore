@@ -3,7 +3,3 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-output/*
-!output/samples/
-logs/
-*.log
