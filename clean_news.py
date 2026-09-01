@@ -23,15 +23,33 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("clean_news")
 
 
+PAGE_SIZE = 1000
+
+
 def fetch_collected() -> list[dict]:
+    """status='collected' 항목 전체를 페이지네이션으로 가져온다.
+
+    PostgREST(Supabase)는 기본적으로 한 번에 최대 1000건만 반환하므로,
+    range()로 나눠 끝까지 순회하지 않으면 카테고리별로 수집 순서상 뒤에
+    저장된 항목(예: policy_industry)이 통째로 누락될 수 있다.
+    """
     client = get_client()
-    resp = (
-        client.table("news_items")
-        .select("id,title,summary,category,published_at,collected_at")
-        .eq("status", "collected")
-        .execute()
-    )
-    return resp.data or []
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        resp = (
+            client.table("news_items")
+            .select("id,title,summary,category,published_at,collected_at")
+            .eq("status", "collected")
+            .range(offset, offset + PAGE_SIZE - 1)
+            .execute()
+        )
+        batch = resp.data or []
+        rows.extend(batch)
+        if len(batch) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
+    return rows
 
 
 def age_ok(item: dict) -> bool:
