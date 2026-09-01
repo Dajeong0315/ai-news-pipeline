@@ -21,5 +21,11 @@ MAX_AGE_HOURS = float(os.environ.get("MAX_AGE_HOURS", 24))
 MIN_LENGTH = int(os.environ.get("MIN_LENGTH", 50))
 DEDUP_SIMILARITY_THRESHOLD = float(os.environ.get("DEDUP_SIMILARITY_THRESHOLD", 85))
 TITLE_MAX_CHARS = int(os.environ.get("TITLE_MAX_CHARS", 30))
+CANDIDATES_PER_CATEGORY = int(os.environ.get("CANDIDATES_PER_CATEGORY", 5))
 
 CATEGORIES = ("index_macro", "stock", "policy_industry")
+CATEGORY_LABELS = {
+    "index_macro": "지수/거시",
+    "stock": "개별종목",
+    "policy_industry": "정책/산업",
+}
