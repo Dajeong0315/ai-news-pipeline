@@ -18,7 +18,7 @@ CLOUDFLARE_TEXT_MODEL = os.environ.get("CLOUDFLARE_TEXT_MODEL", "@cf/meta/llama-
 
 MAX_AGE_HOURS = float(os.environ.get("MAX_AGE_HOURS", 24))
 MIN_LENGTH = int(os.environ.get("MIN_LENGTH", 50))
-DEDUP_SIMILARITY_THRESHOLD = float(os.environ.get("DEDUP_SIMILARITY_THRESHOLD", 85))
+DEDUP_SIMILARITY_THRESHOLD = float(os.environ.get("DEDUP_SIMILARITY_THRESHOLD", 70))
 TITLE_MAX_CHARS = int(os.environ.get("TITLE_MAX_CHARS", 15))
 CANDIDATES_PER_CATEGORY = int(os.environ.get("CANDIDATES_PER_CATEGORY", 5))
 VISION_MODEL = os.environ.get("VISION_MODEL", "@cf/llava-hf/llava-1.5-7b-hf")
