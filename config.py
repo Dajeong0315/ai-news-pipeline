@@ -15,6 +15,16 @@ CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
 CLOUDFLARE_API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "")
 
 CLOUDFLARE_TEXT_MODEL = os.environ.get("CLOUDFLARE_TEXT_MODEL", "@cf/meta/llama-3.1-8b-instruct")
+FLUX_MODEL = os.environ.get("FLUX_MODEL", "@cf/black-forest-labs/flux-1-schnell")
+FLUX_FALLBACK_MODEL = os.environ.get("FLUX_FALLBACK_MODEL", "@cf/bytedance/stable-diffusion-xl-lightning")
+
+INSTAGRAM_ACCESS_TOKEN = os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
+INSTAGRAM_BUSINESS_ACCOUNT_ID = os.environ.get("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
+INSTAGRAM_API_VERSION = os.environ.get("INSTAGRAM_API_VERSION", "v21.0")
+SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "cards")
+
+MAX_BACKLOG_DAYS = int(os.environ.get("MAX_BACKLOG_DAYS", 3))
+SAFE_DAILY_CLOUDFLARE_CALLS = int(os.environ.get("SAFE_DAILY_CLOUDFLARE_CALLS", 30))
 
 MAX_AGE_HOURS = float(os.environ.get("MAX_AGE_HOURS", 24))
 MIN_LENGTH = int(os.environ.get("MIN_LENGTH", 50))
