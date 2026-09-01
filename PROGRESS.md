@@ -185,9 +185,9 @@ MVP 완료 후 운영자 요청으로 확장판 전체를 연결함. 우선순�
 - Cloudflare가 실시간 잔여 뉴런을 조회하는 간단한 API를 제공하지 않아, 오늘 우리가 직접 남긴 레코드 수(`image_prompts`+`generated_images`+검증완료 건수)를 호출량 대리 지표로 사용. `SAFE_DAILY_CLOUDFLARE_CALLS`(기본 30, 평소 9회 안팎) 초과 시 텔레그램 경고. `run_daily.py publish`의 마지막 단계로 자동 실행.
 - 실측: 오늘 정상 실행 기준 텍스트 3 + FLUX 3 + 비전 3 = 9회로, 안전선 대비 여유 충분히 확인.
 
-## 배포 시 확인할 것
+## 배포 확인 완료
 
-- 웹훅 코드(`webhook/api/index.py`)가 이월 큐 로직 + `/status` 엔드포인트로 바뀌었으므로, Vercel이 GitHub push에 자동 배포되도록 연결돼 있지 않다면 **수동으로 재배포 필요**.
+- Vercel이 GitHub push에 **자동 배포**되도록 연결돼 있음을 확인함(`git push` 후 `https://ai-news-pipeline-mu.vercel.app/status`가 실제로 새 코드로 응답하는 것을 확인, 별도 수동 배포 불필요).
 - Vercel 프로젝트 환경변수에 `MAX_BACKLOG_DAYS`(선택, 기본 3)도 추가해두면 로컬 `.env`와 동일하게 맞출 수 있음.
 
 ## 남은 이슈 / TODO
@@ -198,4 +198,3 @@ MVP 완료 후 운영자 요청으로 확장판 전체를 연결함. 우선순�
 4. 자동 스케줄이 내일부터 실제로 잘 도는지 최소 1일차는 `logs/collect.log`, `logs/publish.log`로 확인 필요.
 5. 카테고리 분류 오분류 사례(검색어 "코스닥"인데 개별 종목 얘기인 경우 등)가 발생할 수 있음 — 빈도가 늘면 `keywords.json` 조정 또는 확장판에서 본문 기반 재분류 고려.
 6. **인스타그램 연동 완성을 위해 위 "확장판 1번"의 운영자 설정 단계 진행 필요** — 완료 전까지는 카드만 생성되고 업로드는 건너뛰어짐(데이터 손실 없음, `cards.published=false`로 남아있어 나중에 토큰만 넣으면 `python publish_instagram.py` 수동 실행으로 소급 업로드 가능).
-7. Vercel 웹훅 재배포 여부 확인(위 "배포 시 확인할 것" 참고) — 재배포 전까지는 이월 큐 로직과 `/status`가 실제 서버에는 반영 안 됨.
