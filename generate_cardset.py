@@ -17,6 +17,7 @@ from pathlib import Path
 import config
 from db import get_client
 from fetch_article import fetch_article_text
+from generate_pose import generate_new_pose
 from llm_client import call_text_model
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -66,12 +67,19 @@ SYSTEM_PROMPT = """너는 인스타그램 경제 카드뉴스 계정 "묘한 경
 카드는 반드시 첫 번째가 cover, 마지막이 disclaimer여야 하고, 전체 3~5장이어야 한다.
 action 카드는 선택사항(있으면 disclaimer 바로 앞에 배치).
 
-## 사용 가능한 고양이 포즈(char 필드에 이 중 하나만 사용, 아래 목록에 없는 이름 금지)
+## 사용 가능한 고양이 포즈(char 필드, 아래 목록 중 하나를 최우선으로 사용)
 __POSES__
 
 포즈 선택 가이드: 부정적/리스크 내용→cat-worried, 판단이 필요한 내용→cat-thinking,
 좋은 소식→cat-cheer, 저축·투자·소비→cat-money, 설명하는 카드→cat-explain,
 놀람·반전→cat-surprised, 마무리·실천→cat-happy, 기본→cat-default.
+
+위 목록 중 정말 어울리는 포즈가 하나도 없을 때만, "char" 대신
+"char_new"에 필요한 포즈를 짧은 영어 설명으로 적어라(예:
+"a cat happily raising both paws"). char와 char_new를 동시에 넣지
+마라. 목록에 없는 이름을 char에 쓰지 마라. char_new 설명에는
+초록색(green) 배경/소품을 절대 넣지 마라(투명 배경 처리에 초록색을
+기준으로 쓰기 때문에 같이 지워짐) — 고양이의 포즈·표정만 묘사할 것.
 
 ## 사용 가능한 시각화 타입(visual 필드, 선택사항)
 - {"type":"question"} : 물음표 강조
@@ -158,7 +166,17 @@ def sanitize_cards(data: dict) -> dict:
             else:
                 card["stat"] = card["stat"][:6]
         if card.get("char") not in EXISTING_POSES:
-            card["char"] = "cat-default"
+            char_new = card.pop("char_new", None)
+            if char_new:
+                try:
+                    new_pose = generate_new_pose(char_new)
+                    EXISTING_POSES.append(new_pose)  # 이번 배치의 다른 카드도 바로 재사용 가능
+                    card["char"] = new_pose
+                except Exception as e:
+                    log.warning("새 포즈 생성 실패(%s), 기본 포즈로 대체: %s", char_new, e)
+                    card["char"] = "cat-default"
+            else:
+                card["char"] = "cat-default"
 
         if card.get("type") == "disclaimer":
             # 고지문은 매번 LLM에게 그대로 재현해달라고 맡기지 않고 고정값으로 강제한다
