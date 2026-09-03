@@ -23,8 +23,11 @@ GRAPH_BASE = f"https://graph.facebook.com/{config.INSTAGRAM_API_VERSION}"
 def upload_to_storage(local_path: str) -> str:
     client = get_client()
     bucket = client.storage.from_(config.SUPABASE_STORAGE_BUCKET)
-    storage_path = Path(local_path).name
-    data = Path(local_path).read_bytes()
+    # 카드 파일명이 01.png처럼 카테고리/날짜 사이에 겹칠 수 있어, 폴더 구조를
+    # 그대로 스토리지 경로에 반영해 충돌을 피한다(예: 2026-09-03/stock/01.png).
+    path = Path(local_path)
+    storage_path = "/".join(path.parts[-3:]) if len(path.parts) >= 3 else path.name
+    data = path.read_bytes()
     bucket.upload(
         path=storage_path,
         file=data,
@@ -33,7 +36,37 @@ def upload_to_storage(local_path: str) -> str:
     return bucket.get_public_url(storage_path)
 
 
+def create_carousel_item(image_url: str) -> str:
+    resp = httpx.post(
+        f"{GRAPH_BASE}/{config.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media",
+        data={
+            "image_url": image_url,
+            "is_carousel_item": "true",
+            "access_token": config.INSTAGRAM_ACCESS_TOKEN,
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["id"]
+
+
+def create_carousel_container(child_ids: list[str], caption: str) -> str:
+    resp = httpx.post(
+        f"{GRAPH_BASE}/{config.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media",
+        data={
+            "media_type": "CAROUSEL",
+            "children": ",".join(child_ids),
+            "caption": caption,
+            "access_token": config.INSTAGRAM_ACCESS_TOKEN,
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["id"]
+
+
 def create_media_container(image_url: str, caption: str) -> str:
+    """단일 이미지 게시용(호환용, 캐러셀이 아닌 경우)."""
     resp = httpx.post(
         f"{GRAPH_BASE}/{config.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media",
         data={
@@ -74,6 +107,18 @@ def publish_media(creation_id: str) -> str:
     )
     resp.raise_for_status()
     return resp.json()["id"]
+
+
+def upload_and_publish_carousel(local_paths: list[str], caption: str) -> str:
+    """여러 장의 카드 이미지를 인스타그램 캐러셀(여러 장 게시물) 하나로 올린다."""
+    child_ids = []
+    for path in local_paths:
+        image_url = upload_to_storage(path)
+        child_ids.append(create_carousel_item(image_url))
+
+    container_id = create_carousel_container(child_ids, caption)
+    wait_until_ready(container_id)
+    return publish_media(container_id)
 
 
 def upload_and_publish(local_path: str, caption: str) -> str:

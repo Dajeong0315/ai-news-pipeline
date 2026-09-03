@@ -65,7 +65,7 @@ def today_start_utc_iso() -> str:
 
 def get_allowed_quota(category: str) -> int:
     """이월 큐 로직: 최근 카드 발행이 없었던 연속 일수만큼 오늘 승인 가능
-    개수를 늘려준다. compose_card.py의 동일 로직(REST 버전)."""
+    개수를 늘려준다. generate_cardset.py가 만드는 cards 테이블 기준(REST 버전)."""
     rows = sb_get(
         "cards",
         {
