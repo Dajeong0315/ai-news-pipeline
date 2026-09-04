@@ -112,9 +112,19 @@ async def health():
 CATEGORY_LABELS = {"index_macro": "지수/거시", "stock": "개별종목", "policy_industry": "정책/산업"}
 
 
+CATEGORY_ICONS = {"index_macro": "📈", "stock": "🏢", "policy_industry": "📰"}
+STEP_LABELS = ("승인", "카드 생성", "업로드")
+
+
+def _escape(text: str) -> str:
+    return (
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    )
+
+
 @app.get("/status")
 async def status_page():
-    """오늘의 파이프라인 진행 상황을 보여주는 최소 대시보드(텔레그램 병행용)."""
+    """오늘의 파이프라인 진행 상황을 보여주는 대시보드(텔레그램 병행용)."""
     start = today_start_utc_iso()
     cards = sb_get("cards", {"select": "category,final_title,published", "created_at": f"gte.{start}"})
     approved = sb_get(
@@ -122,30 +132,121 @@ async def status_page():
         {"select": "category,title", "status": "eq.approved", "collected_at": f"gte.{start}"},
     )
 
-    rows_html = ""
+    cards_html = ""
     for category in ("index_macro", "stock", "policy_industry"):
         cat_cards = [c for c in cards if c["category"] == category]
         cat_approved = [a for a in approved if a["category"] == category]
-        if cat_cards:
-            state = "✅ 카드 완성" + (" (인스타 업로드됨)" if all(c["published"] for c in cat_cards) else "")
-            title = ", ".join(c["final_title"] for c in cat_cards)
+
+        if cat_cards and all(c["published"] for c in cat_cards):
+            step, badge_cls, badge_text = 3, "done", "완료 · 인스타 업로드됨"
+            titles = [c["final_title"] for c in cat_cards]
+        elif cat_cards:
+            step, badge_cls, badge_text = 2, "progress", "카드 완성 · 업로드 대기"
+            titles = [c["final_title"] for c in cat_cards]
         elif cat_approved:
-            state = "🟡 승인됨, 카드 생성 대기"
-            title = ", ".join(a["title"] for a in cat_approved)
+            step, badge_cls, badge_text = 1, "progress", "승인됨 · 카드 생성 대기"
+            titles = [a["title"] for a in cat_approved]
         else:
-            state = "⏳ 승인 대기중"
-            title = "-"
+            step, badge_cls, badge_text = 0, "waiting", "승인 대기중"
+            titles = []
+
+        dots_html = "".join(
+            f'<span class="dot{" filled" if i < step else ""}{" current" if i == step else ""}"></span>'
+            + (f'<span class="dot-label">{label}</span>' if i < 2 else "")
+            for i, label in enumerate(STEP_LABELS)
+        )
+        titles_html = (
+            "".join(f'<li>{_escape(t)}</li>' for t in titles)
+            if titles
+            else '<li class="empty">아직 없음</li>'
+        )
         label = CATEGORY_LABELS.get(category, category)
-        rows_html += f"<tr><td>{label}</td><td>{state}</td><td>{title}</td></tr>"
+        icon = CATEGORY_ICONS.get(category, "🐾")
+
+        cards_html += f"""
+        <section class="card">
+          <div class="card-head">
+            <span class="cat"><span class="cat-icon">{icon}</span>{label}</span>
+            <span class="badge {badge_cls}">{badge_text}</span>
+          </div>
+          <div class="steps">{dots_html}</div>
+          <ul class="titles">{titles_html}</ul>
+        </section>
+        """
+
+    now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
 
     html = f"""
-    <html><head><meta charset="utf-8"><title>카드뉴스 오늘 현황</title>
-    <style>body{{font-family:sans-serif;padding:24px}}table{{border-collapse:collapse;width:100%}}
-    td,th{{border:1px solid #ddd;padding:8px;text-align:left}}th{{background:#f4f4f4}}</style>
-    </head><body>
-    <h2>오늘의 카드뉴스 진행 상황</h2>
-    <table><tr><th>카테고리</th><th>상태</th><th>제목</th></tr>{rows_html}</table>
-    </body></html>
+    <!doctype html>
+    <html lang="ko">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <meta http-equiv="refresh" content="60">
+      <title>묘한 경제 · 오늘 현황</title>
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+      <style>
+        :root{{
+          --ink:#453F4E; --sub:#8B8397; --panel:#fff;
+          --bg1:#EEEBF7; --bg2:#E7EEF7;
+          --accent:#7FA8D4; --accent2:#A9D5C9; --warn:#EFA36B;
+        }}
+        *{{margin:0;padding:0;box-sizing:border-box}}
+        body{{
+          font-family:"Pretendard",-apple-system,system-ui,sans-serif;
+          color:var(--ink);
+          background:linear-gradient(155deg,var(--bg1),var(--bg2));
+          min-height:100vh;
+          padding:48px 20px;
+          word-break:keep-all;
+        }}
+        .wrap{{max-width:640px;margin:0 auto}}
+        header{{text-align:center;margin-bottom:36px}}
+        header h1{{font-size:26px;font-weight:800}}
+        header p{{color:var(--sub);font-size:14px;margin-top:6px}}
+        .card{{
+          background:var(--panel);
+          border-radius:20px;
+          padding:22px 24px;
+          margin-bottom:16px;
+          box-shadow:0 8px 24px rgba(69,63,78,.08);
+        }}
+        .card-head{{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px}}
+        .cat{{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px}}
+        .cat-icon{{font-size:20px}}
+        .badge{{font-size:13px;font-weight:700;padding:6px 14px;border-radius:999px;color:#fff;white-space:nowrap}}
+        .badge.waiting{{background:var(--sub)}}
+        .badge.progress{{background:var(--warn)}}
+        .badge.done{{background:var(--accent2)}}
+        .steps{{display:flex;align-items:center;gap:6px;margin-bottom:14px}}
+        .dot{{width:10px;height:10px;border-radius:50%;background:#E4E1EC;flex-shrink:0;position:relative}}
+        .dot.filled{{background:var(--accent2)}}
+        .dot.current{{background:var(--accent);box-shadow:0 0 0 4px rgba(127,168,212,.25)}}
+        .dot-label{{font-size:11px;color:var(--sub);margin-right:8px}}
+        .steps::after{{content:none}}
+        .titles{{list-style:none;font-size:14px;color:#5c5666;line-height:1.7}}
+        .titles li{{padding-left:14px;position:relative}}
+        .titles li::before{{content:"·";position:absolute;left:0;color:var(--accent)}}
+        .titles li.empty{{color:var(--sub)}}
+        .titles li.empty::before{{content:""}}
+        footer{{text-align:center;color:var(--sub);font-size:12px;margin-top:28px}}
+        footer .paw{{opacity:.5;margin-bottom:6px;font-size:16px}}
+      </style>
+    </head>
+    <body>
+      <div class="wrap">
+        <header>
+          <h1>🐾 묘한 경제 · 오늘의 진행 상황</h1>
+          <p>{now_kst} 기준 (KST) · 60초마다 자동 새로고침</p>
+        </header>
+        {cards_html}
+        <footer>
+          <div class="paw">· · ·</div>
+          승인 → 카드 생성 → 인스타 업로드
+        </footer>
+      </div>
+    </body>
+    </html>
     """
     return HTMLResponse(html)
 
