@@ -20,6 +20,33 @@ from db import get_client
 GRAPH_BASE = f"https://graph.facebook.com/{config.INSTAGRAM_API_VERSION}"
 
 
+def _raise_with_detail(resp: httpx.Response) -> None:
+    """httpx의 raise_for_status()는 '400 Bad Request'처럼 상태코드만 담아 실제
+    원인(예: 액세스 토큰 만료)을 알 수 없게 만든다. Graph API 에러 응답의
+    {"error": {"message", "type", "code"}} 본문을 그대로 노출해 텔레그램
+    실패 알림만 보고도 원인을 바로 알 수 있게 한다."""
+    if resp.status_code < 400:
+        return
+    try:
+        detail = resp.json().get("error", {})
+        message = f"{detail.get('message', resp.text)} (code={detail.get('code')}, type={detail.get('type')})"
+    except ValueError:
+        message = resp.text
+    raise RuntimeError(f"Instagram Graph API {resp.status_code}: {message}")
+
+
+def verify_token() -> None:
+    """실제 카드 업로드를 시작하기 전에 토큰이 살아있는지 가볍게 확인한다.
+    토큰이 만료된 채로 카테고리별로 반복 시도하면 같은 원인의 에러가
+    카테고리 수만큼 중복으로 텔레그램에 쌓여 원인 파악만 더 헷갈리게 만든다."""
+    resp = httpx.get(
+        f"{GRAPH_BASE}/{config.INSTAGRAM_BUSINESS_ACCOUNT_ID}",
+        params={"fields": "id", "access_token": config.INSTAGRAM_ACCESS_TOKEN},
+        timeout=15,
+    )
+    _raise_with_detail(resp)
+
+
 def upload_to_storage(local_path: str) -> str:
     client = get_client()
     bucket = client.storage.from_(config.SUPABASE_STORAGE_BUCKET)
@@ -46,7 +73,7 @@ def create_carousel_item(image_url: str) -> str:
         },
         timeout=30,
     )
-    resp.raise_for_status()
+    _raise_with_detail(resp)
     return resp.json()["id"]
 
 
@@ -61,7 +88,7 @@ def create_carousel_container(child_ids: list[str], caption: str) -> str:
         },
         timeout=30,
     )
-    resp.raise_for_status()
+    _raise_with_detail(resp)
     return resp.json()["id"]
 
 
@@ -76,7 +103,7 @@ def create_media_container(image_url: str, caption: str) -> str:
         },
         timeout=30,
     )
-    resp.raise_for_status()
+    _raise_with_detail(resp)
     return resp.json()["id"]
 
 
@@ -89,7 +116,7 @@ def wait_until_ready(creation_id: str, max_wait_sec: int = 30, poll_interval_sec
             params={"fields": "status_code", "access_token": config.INSTAGRAM_ACCESS_TOKEN},
             timeout=15,
         )
-        resp.raise_for_status()
+        _raise_with_detail(resp)
         status = resp.json().get("status_code")
         if status == "FINISHED":
             return
@@ -105,7 +132,7 @@ def publish_media(creation_id: str) -> str:
         data={"creation_id": creation_id, "access_token": config.INSTAGRAM_ACCESS_TOKEN},
         timeout=30,
     )
-    resp.raise_for_status()
+    _raise_with_detail(resp)
     return resp.json()["id"]
 
 
