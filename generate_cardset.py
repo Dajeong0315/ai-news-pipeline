@@ -10,6 +10,7 @@ LLM으로 생성하고, assets/templates/validate.js로 검증한다.
 
 import json
 import logging
+import re
 import subprocess
 from datetime import date
 from pathlib import Path
@@ -51,6 +52,12 @@ SYSTEM_PROMPT = """너는 인스타그램 경제 카드뉴스 계정 "묘한 경
 2. 어려운 용어는 한 줄로 풀어 설명한다. 클릭베이트 금지. 친근한 해요체.
 3. 개인 맞춤 투자·재무 조언을 하지 않는다.
 4. 카드에는 출처 URL을 넣지 않는다.
+5. 카드마다 서로 다른 내용을 다뤄야 한다. 같은 사실·문장을 두 장 이상에 나눠서
+   반복하지 마라(예: 2번 카드와 3번 카드가 제목·본문이 똑같으면 안 됨).
+6. body는 반드시 "…"로 끝나는 미완성 문장이 아니라, 완결된 문장(들)으로
+   끝나야 한다. 90자 제한 안에 다 안 들어갈 것 같으면 처음부터 문장을
+   짧게 나눠 써라(예: 긴 문장 하나 대신 짧은 문장 2개를 <br><br>로 연결).
+   글자 수를 맞추려고 문장 중간을 자르지 마라.
 
 ## 출력 형식 (JSON만 출력, 설명 텍스트 붙이지 마라)
 {
@@ -124,19 +131,45 @@ def fetch_approved_without_cardset() -> list[dict]:
     return [it for it in approved if it["id"] not in done_ids]
 
 
-def _truncate(text: str, max_chars: int) -> str:
-    """단어 경계에서 자르고 말줄임표를 붙이되, 최종 길이가 반드시 max_chars 이내가 되도록 한다."""
+_SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _truncate(text: str, max_chars: int, *, strict: bool = False) -> str:
+    """길이 제한을 넘으면 문장 단위로 끊어 마지막 완결 문장까지만 남긴다.
+
+    예전에는 글자 수만 넘으면 무조건 단어 경계에서 자르고 말줄임표(…)를
+    붙였는데, 그러면 "…영향을…"처럼 문장이 중간에 잘린 채로 카드에 그대로
+    노출되는 문제가 실제로 발생했다(운영자 피드백, 2026-09-06). 완결된
+    문장까지만 남기고 말줄임표는 붙이지 않는다.
+
+    strict=True인데 문장 하나가 이미 제한보다 길어 완결 문장으로는 도저히
+    못 자르는 경우, 조용히 단어 경계에서 잘라 보여주는 대신 예외를 던져
+    LLM 재생성을 유도한다(본문 카드의 body 전용 — hook/title처럼 원래
+    마침표 없는 짧은 문구는 strict를 쓰지 않는다)."""
     if text is None:
         return text
     plain = text.replace("<br><br>", " ").replace("<br>", " ").strip()
     if len(plain) <= max_chars:
         return plain
-    budget = max_chars - 1
+
+    kept = ""
+    for sentence in _SENTENCE_END_RE.split(plain):
+        candidate = f"{kept} {sentence}".strip() if kept else sentence
+        if len(candidate) > max_chars:
+            break
+        kept = candidate
+    if kept:
+        return kept
+
+    if strict:
+        raise ValueError(f"문장 경계 안에서 {max_chars}자 제한을 만족하는 본문을 만들 수 없음: {plain[:40]}...")
+
+    budget = max_chars
     cut = plain[:budget]
     last_space = cut.rfind(" ")
     if last_space > budget * 0.5:
         cut = cut[:last_space]
-    return cut.rstrip(" ,.-·") + "…"
+    return cut.rstrip(" ,.-·")
 
 
 def sanitize_cards(data: dict) -> dict:
@@ -153,7 +186,7 @@ def sanitize_cards(data: dict) -> dict:
         if card.get("title"):
             card["title"] = _truncate(card["title"], 36)
         if card.get("body"):
-            card["body"] = _truncate(card["body"], 90)
+            card["body"] = _truncate(card["body"], 90, strict=True)
         if card.get("stat"):
             # stat-num은 128px 폰트로 표지에 크게 박히는 요소라 아주 짧아야
             # 한다(예: "2.75%"). 한글 단어가 섞이면 글자 수가 적어도 실제
@@ -202,6 +235,21 @@ def sanitize_cards(data: dict) -> dict:
     return data
 
 
+def _check_no_duplicate_cards(data: dict) -> None:
+    """LLM이 같은 내용을 카드 2장에 나눠 그대로 반복하는 경우가 실제로
+    확인돼(운영자 피드백, 2026-09-06 — 반도체 카드 2번/3번이 제목·본문 모두
+    동일), cover/disclaimer/action을 제외한 본문 카드끼리 title+body가
+    겹치면 예외를 던져 재생성을 유도한다(process_item의 재시도 루프가 처리)."""
+    seen = set()
+    for card in data.get("cards", []):
+        if card.get("type") in ("cover", "disclaimer", "action"):
+            continue
+        key = (card.get("title"), card.get("body"))
+        if key != (None, None) and key in seen:
+            raise ValueError(f"카드 내용 중복 감지(title={card.get('title')!r})")
+        seen.add(key)
+
+
 def build_content_json(title: str, article_text: str, category: str) -> dict:
     label = config.CATEGORY_LABELS.get(category, category)
     system_prompt = SYSTEM_PROMPT.replace(
@@ -217,6 +265,7 @@ def build_content_json(title: str, article_text: str, category: str) -> dict:
         if raw.startswith("json"):
             raw = raw[4:]
     data = json.loads(raw)
+    _check_no_duplicate_cards(data)
     data["season"] = current_season()
     data["handle"] = "@myohan.economy"
     return sanitize_cards(data)
@@ -255,7 +304,7 @@ def process_item(item: dict) -> dict | None:
             caption = data.pop("caption", "")
             content = data
         except Exception as e:
-            log.warning("[%s] LLM 응답 파싱 실패(%d/%d): %s", item["category"], attempt, MAX_ATTEMPTS, e)
+            log.warning("[%s] LLM 응답 생성/검사 실패(%d/%d): %s", item["category"], attempt, MAX_ATTEMPTS, e)
             continue
 
         out_dir = Path("output") / date.today().isoformat() / item["category"]
