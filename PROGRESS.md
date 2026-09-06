@@ -1,6 +1,6 @@
 # 진행 상태
 
-마지막 갱신: 2026-09-05
+마지막 갱신: 2026-09-06
 
 ## 2026-09-05 인스타그램 업로드 실패 원인 조사 및 수정
 
@@ -33,13 +33,25 @@
    (카드는 `cards.published=false`로 남으므로 토큰만 갱신하면
    `python publish_instagram.py` 재실행으로 소급 업로드 가능, 데이터 손실 없음).
 
-### 운영자가 해야 하는 일
+### 운영자가 해야 하는 일 (완료, 2026-09-06)
 
-`INSTAGRAM_ACCESS_TOKEN`을 재발급해야 함(9/3 진행상황에 적힌 "확장판 1번"의
-4~6번 단계 반복: Graph API Explorer에서 새 토큰 발급 -> 가능하면 60일
-장기 토큰으로 교환 -> `.env`의 `INSTAGRAM_ACCESS_TOKEN` 갱신). 이번 수정
-이후에는 토큰이 다시 만료돼도 텔레그램 알림에 정확한 사유가 찍히므로
-같은 원인으로 헤매는 일은 없어짐.
+`INSTAGRAM_ACCESS_TOKEN`을 재발급함(9/3 진행상황에 적힌 "확장판 1번"의
+4~6번 단계 반복: `get_instagram_account_id.py`로 페이지 액세스 토큰/계정 ID
+재확인 -> `fb_exchange_token`으로 장기 토큰 교환 -> `.env`의
+`INSTAGRAM_ACCESS_TOKEN` 갱신). `debug_token`으로 검증한 결과
+`"expires_at": 0`(만료 없음), `is_valid: true`, 필요한 스코프
+(`instagram_basic`, `instagram_content_publish`, `pages_show_list`,
+`pages_read_engagement`) 전부 포함 확인 — 인스타그램 비즈니스 계정 ID
+(`17841480199771120`)는 기존과 동일해 계정 연결 자체는 문제없었음이 재확인됨,
+문제는 순전히 토큰 만료였음이 최종 확정.
+
+이번 수정(`verify_token()`) 덕분에 새 토큰이 정상 반영된 것도 텔레그램/로그로
+바로 확인됨: `python publish_instagram.py` 재실행으로 9/5에 밀렸던 카드
+3건(index_macro 3장, policy_industry 5장, stock 5장) 전부 소급 게시 완료
+(media_id: 18367169308213768, 18098653862374252, 17966778585150434).
+이후에는 토큰이 다시 만료돼도 텔레그램 알림에 정확한 사유가 찍히므로 같은
+원인으로 헤매는 일은 없어짐. `.env`는 `.gitignore`에 등록돼 있고 git
+히스토리에도 커밋된 적이 없어 토큰 값이 저장소에는 올라가지 않음을 확인.
 
 ## 2026-09-03 대규모 재설계 — "묘한 경제" 브랜드로 전면 교체
 
