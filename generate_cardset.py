@@ -242,6 +242,13 @@ def render_cardset(content_path: Path, out_dir: Path) -> bool:
     return True
 
 
+def card_output_dir(item: dict) -> Path:
+    # 이월 큐로 같은 카테고리가 하루에 2건 이상 승인될 수 있어, 카테고리만으로
+    # 폴더를 나누면 뒤 건이 앞 건의 PNG를 덮어쓴다(두 cards 행이 같은 폴더를
+    # 가리켜 같은 캐러셀이 두 번 올라감). news_item id를 붙여 항상 분리한다.
+    return Path("output") / date.today().isoformat() / f"{item['category']}-{item['id']}"
+
+
 def process_item(item: dict) -> dict | None:
     log.info("[%s] 기사 원문 수집 중: %s", item["category"], item["url"])
     article_text = fetch_article_text(item["url"])
@@ -258,7 +265,7 @@ def process_item(item: dict) -> dict | None:
             log.warning("[%s] LLM 응답 파싱 실패(%d/%d): %s", item["category"], attempt, MAX_ATTEMPTS, e)
             continue
 
-        out_dir = Path("output") / date.today().isoformat() / item["category"]
+        out_dir = card_output_dir(item)
         out_dir.mkdir(parents=True, exist_ok=True)
         content_path = out_dir / "content.json"
         content_path.write_text(json.dumps(content, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -317,7 +324,7 @@ def build_fallback_content(item: dict, article_text: str) -> dict:
 
 def build_and_render_fallback(item: dict, article_text: str) -> dict | None:
     content = build_fallback_content(item, article_text)
-    out_dir = Path("output") / date.today().isoformat() / item["category"]
+    out_dir = card_output_dir(item)
     out_dir.mkdir(parents=True, exist_ok=True)
     content_path = out_dir / "content.json"
     content_path.write_text(json.dumps(content, ensure_ascii=False, indent=2), encoding="utf-8")

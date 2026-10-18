@@ -7,6 +7,7 @@
     python send_candidates.py
 """
 
+import html
 import logging
 
 import config
@@ -35,9 +36,9 @@ def format_message(item: dict) -> str:
     label = config.CATEGORY_LABELS.get(item["category"], item["category"])
     return (
         f"[{label}]\n"
-        f"<b>{item['title']}</b>\n"
-        f"출처: {item.get('source') or '알 수 없음'}\n"
-        f"{item['url']}"
+        f"<b>{html.escape(item['title'])}</b>\n"
+        f"출처: {html.escape(item.get('source') or '알 수 없음')}\n"
+        f"{html.escape(item['url'])}"
     )
 
 
