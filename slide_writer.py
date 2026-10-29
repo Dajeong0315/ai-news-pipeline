@@ -22,6 +22,7 @@ import os
 import re
 import sys
 
+import httpx
 from rapidfuzz import fuzz
 
 import config
@@ -42,7 +43,14 @@ _NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
 _BOILERPLATE_RE = re.compile(r"<?ⓒ.*$|무단전재.*$", re.MULTILINE)
 # 운영자가 질 낮다고 지적한 뻔한 마무리·투자 암시 표현(2026-10-29)
 BANNED_PHRASES = ("오를 가능성", "염두에", "기대해 볼", "주목해 보세요", "기억해 주세요", "핵심을 기억",
-                  "공부해 보", "관심을 가져", "투자에 유의", "알아두면 좋")
+                  "공부해 보", "관심을 가져", "투자에 유의", "알아두면 좋",
+                  # 번역투·기사체·과장(가독성 피드백, 2026-10-29)
+                  "것으로 나타났", "것으로 보인다", "이같은", "에 있어서", "라고 할 수 있", "폭등", "폭락", "충격", "대박")
+TITLE_LINE_MAX = 13  # 템플릿 제목 크기에서 한 줄에 무리 없이 들어가는 글자 수
+SENTENCE_MAX = 40
+SENTENCE_FIELDS = ("body",)  # 문장으로 쓰는 필드. label·note·kicker는 명사구 허용
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+_POLITE_END_RE = re.compile(r"(요|죠|까|나요)[.!?…]*$")
 
 SYSTEM_PROMPT = """너는 인스타그램 경제 카드뉴스 "묘한 경제"의 에디터다. 독자는 경제 기사를 잘 안 읽는 20~30대다.
 기사 하나를 읽고, 스크롤을 멈추게 하는 캐러셀 슬라이드를 만든다.
@@ -65,6 +73,7 @@ SYSTEM_PROMPT = """너는 인스타그램 경제 카드뉴스 "묘한 경제"의
 15. 표본이 적거나 인과가 불확실하다는 내용이 기사에 있으면, 그 한계를 숫자와 함께 분명히 말한다.
 
 [슬라이드 종류] 필요한 것만 골라 쓴다. 첫 장은 반드시 cover.
+- 모든 title·quote는 의미 단위로 "\\n"을 넣어 줄을 나눈다. 한 줄은 12자 이내(예: "중간선거 끝나면\\n비트코인이 오른다?").
 - cover: 표지. title은 궁금증을 만드는 한 문장(최대 24자). kicker는 위에 붙는 짧은 꼬리표(최대 12자). subtitle은 선택(최대 30자).
 - stat: 숫자 하나로 말하는 장. value(예: "53.7%"), label(그 숫자가 무엇인지, 최대 30자), note(선택, 최대 50자).
 - compare: 두세 값을 나란히 비교. title(최대 22자), items=[{"label": 최대 12자, "value": 최대 10자}], note(선택).
@@ -82,6 +91,25 @@ SYSTEM_PROMPT = """너는 인스타그램 경제 카드뉴스 "묘한 경제"의
   "image_prompt": "English. A concrete photographic scene (subject, setting, light, mood) that fits the topic. No text, no logos, no charts."
 }
 """
+
+EDITOR_PROMPT = """너는 인스타그램 카드뉴스 편집장이다. 기자가 쓴 슬라이드 초안을, 휴대폰으로 넘겨 보는 독자가
+한 장을 2초 안에 읽고 이해하도록 다듬는다. 사실과 숫자는 원문 그대로 두고, 원문에 없는 정보는 넣지 않는다.
+
+아래 순서로 점검하고 고친다.
+1. 구성: 표지(궁금증) → 근거(숫자) → 반전·한계 → 정리로 자연스럽게 이어지는가.
+   제목만 이어 읽어도 이야기가 되는가. 힘없는 장, 앞 장과 겹치는 장은 합치거나 뺀다(3~7장 유지).
+   한 장에 메시지는 하나만.
+2. 문장 구조: 한 문장에 정보 하나. 문장은 35자 이내. 주어와 서술어를 가깝게.
+   수식어를 앞에 길게 쌓지 않는다("과거 반감기 이후 12~18개월 안에 큰 폭 상승했으며" 같은 긴 연결문은 둘로 자른다).
+   "~며", "~고," 로 문장을 이어 붙이지 않는다.
+3. 어감: 모든 문장 끝을 해요체("~예요", "~해요", "~죠", "~어요")로 통일한다.
+   합쇼체("~습니다"), 기사체("~했다", "~로 나타났다", "~것으로 보인다"), 번역투("~에 대해", "~에 있어서", "이같은"),
+   과장("폭등", "폭락", "충격", "대박")을 없앤다. 친구에게 설명하듯 쉽고 담백하게.
+4. 가독성: title·quote는 의미 단위로 "\\n" 줄바꿈해 한 줄 12자 이내. body는 문장 2개 이내.
+   kicker는 짧은 명사구. 숫자는 단위와 붙여 쓴다(53.7%, 4년).
+
+출력: 고친 덱 전체를 초안과 같은 JSON 형식으로, 다른 말 없이 출력한다.
+"edits" 배열에 무엇을 왜 고쳤는지 짧게 적는다(예: "3장 긴 연결문을 두 문장으로 분리")."""
 
 LIMITS = {
     "title": 26, "kicker": 14, "subtitle": 34, "label": 32, "value": 12, "note": 56,
@@ -119,9 +147,27 @@ def check_deck(deck: dict, article: str) -> None:
     for i, slide in enumerate(slides, 1):
         if slide.get("kind") not in known:
             raise ValueError(f"{i}장: 알 수 없는 종류 {slide.get('kind')!r}")
+        for key in LIMITS:
+            if key in slide and slide[key] is not None and not isinstance(slide[key], str):
+                raise ValueError(f"{i}장 {key}는 문자열이어야 함(목록·객체 금지): {slide[key]!r}")
+        items = slide.get("items")
+        if items is not None and not (isinstance(items, list) and all(isinstance(x, (str, dict)) for x in items)):
+            raise ValueError(f"{i}장 items 형식 오류: {items!r}")
         for key, limit in LIMITS.items():
             if isinstance(slide.get(key), str) and len(slide[key]) > limit:
                 raise ValueError(f"{i}장 {key} 길이 초과({len(slide[key])}>{limit}): {slide[key]!r}")
+        for key in ("title", "quote"):
+            for line in (slide.get(key) or "").split("\n"):
+                if len(line.strip()) > TITLE_LINE_MAX:
+                    raise ValueError(f"{i}장 {key} 한 줄이 {TITLE_LINE_MAX}자 초과(의미 단위로 \\n 줄바꿈 필요): {line!r}")
+        for key in SENTENCE_FIELDS:
+            for sentence in _SENTENCE_SPLIT_RE.split((slide.get(key) or "").strip()):
+                if not sentence:
+                    continue
+                if len(sentence) > SENTENCE_MAX:
+                    raise ValueError(f"{i}장 {key} 문장이 {SENTENCE_MAX}자 초과: {sentence!r}")
+                if not _POLITE_END_RE.search(sentence):
+                    raise ValueError(f"{i}장 {key} 해요체가 아닌 문장: {sentence!r}")
         for text in _texts(slide):
             banned = next((b for b in BANNED_PHRASES if b in text), None)
             if banned:
@@ -151,23 +197,49 @@ def clean_article(text: str) -> str:
     return normalize_hanja(_BOILERPLATE_RE.sub("", text)).strip()
 
 
+def _parse(raw: str) -> dict:
+    raw = re.sub(r"^```(?:json)?|```$", "", raw.strip()).strip()
+    return json.loads(raw[raw.index("{"): raw.rindex("}") + 1])
+
+
+def _raise_if_quota_exhausted(e: Exception) -> None:
+    """Cloudflare 무료 한도(하루 1만 뉴런) 소진(429)은 재시도해도 소용없고 다른 카테고리 몫만
+    더 막으므로 바로 포기한다(2026-10-29 테스트 중 실제로 소진됨, 09:00 KST에 리셋)."""
+    if isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 429:
+        raise RuntimeError("Cloudflare Workers AI 일일 무료 한도 소진(429) — 09:00 KST 리셋 후 재시도") from e
+
+
 def write_deck(title: str, article: str, category: str) -> dict:
+    """초안 작성 → 편집장 검수(구성·문장 구조·어감·가독성) → 코드 검사.
+    검사에 걸리면 걸린 이유를 편집 단계에 돌려줘 고치게 하고, 그래도 안 되면 초안부터 다시 쓴다."""
     article = clean_article(article)
-    user = normalize_hanja(f"카테고리: {config.CATEGORY_LABELS.get(category, category)}\n제목: {title}\n\n[기사 원문]\n{article}")
-    last_error = None
+    source = normalize_hanja(f"카테고리: {config.CATEGORY_LABELS.get(category, category)}\n제목: {title}\n\n[기사 원문]\n{article}")
+    last_error: Exception | None = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        raw = call_text_model(SYSTEM_PROMPT, user, max_tokens=4000, model=MODEL).strip()
-        raw = re.sub(r"^```(?:json)?|```$", "", raw).strip()
         try:
-            deck = json.loads(raw[raw.index("{"): raw.rindex("}") + 1])
-            check_deck(deck, article + " " + title)
-        except (ValueError, json.JSONDecodeError) as e:
+            draft = _parse(call_text_model(SYSTEM_PROMPT, source, max_tokens=8000, model=MODEL))
+        except Exception as e:  # 파싱 실패, 응답 잘림(incomplete), 일시적 API 오류 모두 다음 시도로
+            _raise_if_quota_exhausted(e)
             last_error = e
-            print(f"[slide_writer] 시도 {attempt}/{MAX_ATTEMPTS} 실패: {e}", file=sys.stderr)
+            print(f"[slide_writer] 시도 {attempt}/{MAX_ATTEMPTS} 초안 파싱 실패: {e}", file=sys.stderr)
             continue
-        tags = " ".join("#" + t.lstrip("#").replace(" ", "") for t in deck.get("hashtags", [])[:8])
-        deck["caption"] = f"{deck.get('caption', '').strip()}\n\n{DISCLAIMER}\n{tags}".strip()
-        return deck
+        deck, feedback = draft, ""
+        for review in range(1, 4):  # 편집 1회 + 검사 실패 시 수정 최대 2회
+            request = f"{source}\n\n[슬라이드 초안]\n{json.dumps(deck, ensure_ascii=False)}"
+            if feedback:
+                request += f"\n\n[검사에서 걸린 문제 — 반드시 고칠 것]\n{feedback}"
+            try:
+                deck = _parse(call_text_model(EDITOR_PROMPT, request, max_tokens=8000, model=MODEL))
+                check_deck(deck, article + " " + title)
+            except Exception as e:
+                _raise_if_quota_exhausted(e)
+                last_error, feedback = e, str(e)
+                print(f"[slide_writer] 시도 {attempt}/{MAX_ATTEMPTS} 편집 {review}회차 실패: {e}", file=sys.stderr)
+                continue
+            tags = " ".join("#" + t.lstrip("#").replace(" ", "") for t in deck.get("hashtags", [])[:8])
+            deck["caption"] = f"{deck.get('caption', '').strip()}\n\n{DISCLAIMER}\n{tags}".strip()
+            deck.setdefault("image_prompt", draft.get("image_prompt"))
+            return deck
     raise RuntimeError(f"슬라이드 생성 {MAX_ATTEMPTS}회 실패: {last_error}")
 
 

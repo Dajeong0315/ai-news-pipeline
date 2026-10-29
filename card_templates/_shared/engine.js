@@ -6,8 +6,12 @@
 // job = {
 //   brand: { name, handle, wordmark, series, mascots: { default, cover, stat, ... } },
 //   background: "file:///.../bg.jpg",
-//   slides: [ { kind: "cover" | "stat" | "compare" | "point" | "list" | "quote" | "closing", ... } ]
+//   slides: [ { kind: "cover" | "stat" | "compare" | "point" | "list" | "quote" | "closing", ... } ],
+//   mascot: false   // 선택. false면 마스코트 없는 버전(슬라이드에 .no-mascot 클래스)
 // }
+//
+// 제목·인용·큰 숫자는 슬라이드 데이터의 줄바꿈(\n)대로만 줄을 나누고, 한 줄이 칸을
+// 넘으면 글자 크기를 줄여 맞춘다(window.fitDeck). 의미 단위 줄바꿈을 지켜 가독성을 보장.
 
 (function () {
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -60,6 +64,7 @@
     T = window.TEMPLATE || {};
     const n = job.slides.length;
     const brand = job.brand || {};
+    if (job.mascot === false) brand.mascots = {};
     const mascot = (slide, i) => {
       const m = brand.mascots || {};
       return m[`${slide.kind}-${i}`] || m[slide.kind] || m.default || "";
@@ -72,12 +77,29 @@
       const inner = T.content ? T.content(slide, ctx, content) : content(slide);
       const foot = T.foot ? T.foot(slide, ctx)
         : `<footer class="foot"><span class="handle">${esc(brand.handle || "")}</span><span class="page">${i}/${n}</span></footer>`;
-      return `<section class="slide k-${slide.kind} ${variant}" data-i="${i}">
+      return `<section class="slide k-${slide.kind} ${variant} ${ctx.mascot ? "has-mascot" : "no-mascot"}" data-i="${i}">
         <div class="bg"><img src="${esc(job.background)}" alt=""></div><div class="shade"></div>
         <div class="deco">${deco}</div>
         <div class="content">${inner}</div>${foot}</section>`;
     }).join("");
     document.getElementById("deck").innerHTML = html;
     return n;
+  };
+
+  // 줄바꿈은 데이터대로만, 넘치면 글자를 줄인다(최소 min px). 폰트 로딩 뒤에 호출.
+  window.fitDeck = function () {
+    const shrink = (el, min) => {
+      el.style.whiteSpace = "nowrap";
+      let size = parseFloat(getComputedStyle(el).fontSize);
+      const limit = () => el.parentElement.getBoundingClientRect().width;
+      while (el.scrollWidth > Math.ceil(limit()) + 1 && size > min) {
+        size -= 2;
+        el.style.fontSize = size + "px";
+      }
+      if (el.scrollWidth > Math.ceil(limit()) + 1) el.style.whiteSpace = "normal"; // 최소 크기로도 안 되면 자동 줄바꿈
+    };
+    document.querySelectorAll(".slide .title").forEach((el) => shrink(el, 48));
+    document.querySelectorAll(".slide .quote").forEach((el) => shrink(el, 44));
+    document.querySelectorAll(".slide .value:not(:has(.tiles))").forEach((el) => shrink(el, 90));
   };
 })();

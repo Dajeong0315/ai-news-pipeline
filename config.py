@@ -42,6 +42,15 @@ QA_MAX_ATTEMPTS = int(os.environ.get("QA_MAX_ATTEMPTS", 3))
 QA_MIN_ARTICLE_CHARS = int(os.environ.get("QA_MIN_ARTICLE_CHARS", 400))
 
 CATEGORIES = ("index_macro", "stock", "policy_industry")
+# 카드 디자인 순환 대상(card_templates/ 폴더 이름, 뒤에 ":plain"이면 고양이 없는 버전).
+# 기본은 6종 × 고양이 유무 12가지를 고양이 있음/없음이 번갈아 나오게 배치. 빼고 싶은 건 환경변수에서 지운다.
+CARD_TEMPLATES = tuple(
+    t.strip() for t in os.environ.get(
+        "CARD_TEMPLATES",
+        "gallery,moody:plain,sticker,darkcenter:plain,blocktitle,cutout:plain,"
+        "gallery:plain,moody,sticker:plain,darkcenter,blocktitle:plain,cutout",
+    ).split(",") if t.strip()
+)
 CATEGORY_LABELS = {
     "index_macro": "지수/거시",
     "stock": "개별종목",

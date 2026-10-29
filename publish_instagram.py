@@ -1,5 +1,8 @@
 """오늘 만든 카드세트(cards.published=false)를 캐러셀로 인스타그램에 업로드한다.
 
+오늘(KST) 만든 카드만 올린다. 날짜 제한이 없으면 테스트나 실패 후 남은 지난 카드가
+다음 정기 실행 때 한꺼번에 게시된다(2026-09-03 미발행 9장 동시 게시 사고와 같은 경로).
+
 cards.image_path는 generate_cardset.py가 만든 폴더 경로(01.png~NN.png +
 caption.txt가 들어있는)를 가리킨다. 폴더 하나 = 인스타그램 캐러셀 게시물 하나.
 
@@ -8,6 +11,7 @@ caption.txt가 들어있는)를 가리킨다. 폴더 하나 = 인스타그램 �
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import config
@@ -20,12 +24,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("publish_instagram")
 
 
+KST = timezone(timedelta(hours=9))
+
+
 def fetch_unpublished() -> list[dict]:
     client = get_client()
+    today_start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
     resp = (
         client.table("cards")
         .select("id,category,final_title,image_path,publish_order")
         .eq("published", False)
+        .gte("created_at", today_start.isoformat())
         .order("publish_order")
         .execute()
     )

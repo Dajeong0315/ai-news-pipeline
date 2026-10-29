@@ -6,9 +6,13 @@
 """
 
 import json
+import logging
 
 import config
 from http_retry import post_with_retry
+
+log = logging.getLogger("llm_client")
+NEURONS_USED = 0.0
 
 
 def call_text_model(
@@ -28,6 +32,12 @@ def call_text_model(
         resp = post_with_retry(url, json=payload, headers=headers, timeout=120)
         resp.raise_for_status()
         result = resp.json().get("result") or {}
+        # 무료 한도(하루 1만 뉴런) 관리용: 호출마다 소모량을 남기고 실행 단위로 누적한다.
+        usage = result.get("usage") or {}
+        global NEURONS_USED
+        NEURONS_USED += usage.get("neurons") or 0
+        log.info("텍스트 모델 사용량: in %s / out %s 토큰, %.1f 뉴런 (이번 실행 누적 %.0f)",
+                 usage.get("input_tokens"), usage.get("output_tokens"), usage.get("neurons") or 0, NEURONS_USED)
         texts = [
             part.get("text", "")
             for block in result.get("output", []) if block.get("type") == "message"

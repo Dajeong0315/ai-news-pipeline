@@ -40,6 +40,8 @@
   .quote { font-size: 74px; font-weight: 800; line-height: 1.3; }
   .quote::before { content: "“"; } .quote::after { content: "”"; }
   .foot { left: 72px; right: 72px; bottom: 56px; font-size: 30px; font-weight: 700; }
+  .slide .deco .cat { width: 300px; right: 60px; top: 230px; transform: rotate(6deg); }
+  .k-cover .deco .cat { width: 280px; right: 80px; top: 600px; }
   .foot .wordmark { font-size: 40px; font-weight: 800; display: flex; gap: 12px; align-items: center; }
 </style></head>
 <body><div id="deck"></div>
@@ -48,6 +50,7 @@ const tiles = (s, cls = "") => `<span class="tiles ${cls}">${[...String(s)].filt
 window.TEMPLATE = {
   value: (v, small) => tiles(v, small ? "small" : ""),
   deco: (slide, ctx) => `<span class="pill">${ctx.esc(slide.kicker || ctx.brand.series || "Notice")}</span>` +
+    (ctx.mascot && ["cover", "stat", "closing"].includes(slide.kind) ? `<img class="cat sticker-img" src="${ctx.esc(ctx.mascot)}">` : "") +
     (slide.kind === "cover" ? tiles(ctx.brand.wordmark.replace(/\s/g, "")) : ""),
   foot: (slide, ctx) => `<footer class="foot"><span>${ctx.i}/${ctx.n}</span><span class="wordmark">${ctx.esc(ctx.brand.emoji || "")} ${ctx.esc(ctx.brand.wordmark)}</span></footer>`,
 };

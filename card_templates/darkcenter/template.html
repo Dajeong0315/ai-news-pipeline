@@ -41,6 +41,7 @@
   .note-card .deco .spark { width: 70px; left: 50%; margin-left: -35px; bottom: 210px; color: #fff; }
 
   .slide .foot { left: 0; right: 0; bottom: 70px; justify-content: center; }
+  .slide .deco .mini { width: 190px; left: 50%; margin-left: -95px; bottom: 140px; }
   .foot .wordmark { font-size: 42px; font-weight: 800; letter-spacing: -.02em; }
   .foot .wordmark i { font-style: normal; color: var(--label); }
 </style></head>
@@ -50,6 +51,7 @@ window.TEMPLATE = {
   variant: (slide) => (["point", "quote", "list"].includes(slide.kind) ? "note-card" : ""),
   content: (slide, ctx, base) => (["point", "quote", "list"].includes(slide.kind) ? `<div class="card">${base(slide)}</div>` : base(slide)),
   deco: (slide, ctx) => `<div class="toplabel">${ctx.esc(slide.kicker || ctx.brand.series || "")}</div>` +
+    (ctx.mascot && ["cover", "closing", "stat", "compare"].includes(slide.kind) ? `<img class="mini sticker-img" src="${ctx.esc(ctx.mascot)}">` : "") +
     (["point", "quote", "list"].includes(slide.kind) ? `<span class="spark">${ctx.doodles.sparkle}</span>` : ""),
   foot: (slide, ctx) => `<footer class="foot"><span class="wordmark">${ctx.esc(ctx.brand.wordmark || ctx.brand.name).replace(" ", "<i>:</i>")}</span></footer>`,
 };

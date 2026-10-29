@@ -34,8 +34,15 @@
 
   .foot { left: 84px; right: 84px; bottom: 56px; font-size: 26px; color: rgba(255,255,255,.7); font-weight: 600; letter-spacing: .02em; }
   .k-cover .foot .page { display: none; }
+  .deco .peek { width: 250px; right: 54px; bottom: 96px; }
+  .has-mascot.k-cover .content, .has-mascot.k-closing .content { right: 300px; }
 </style></head>
 <body><div id="deck"></div>
-<script>window.TEMPLATE = {};</script>
+<script>
+window.TEMPLATE = {
+  deco: (slide, ctx) => (ctx.mascot && ["cover", "closing"].includes(slide.kind)
+    ? `<img class="peek sticker-img" src="${ctx.esc(ctx.mascot)}">` : ""),
+};
+</script>
 <script src="../_shared/engine.js"></script>
 </body></html>

@@ -34,6 +34,7 @@ const toUrl = (p, base) => (!p || /^(https?|file|data):/.test(p) ? p : pathToFil
     await page.goto(pathToFileURL(templatePath).href, { waitUntil: 'networkidle' });
     const n = await page.evaluate((j) => window.renderDeck(j), job);
     await page.evaluate(() => document.fonts.ready);
+    await page.evaluate(() => window.fitDeck && window.fitDeck());
     await page.waitForFunction(() => [...document.images].every((img) => img.complete), null, { timeout: 15000 });
     await page.waitForTimeout(300);
 
