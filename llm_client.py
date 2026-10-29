@@ -11,12 +11,32 @@ import config
 from http_retry import post_with_retry
 
 
-def call_text_model(system_prompt: str, user_content: str, max_tokens: int | None = None) -> str:
+def call_text_model(
+    system_prompt: str, user_content: str, max_tokens: int | None = None, model: str | None = None
+) -> str:
     url = (
         f"https://api.cloudflare.com/client/v4/accounts/"
-        f"{config.CLOUDFLARE_ACCOUNT_ID}/ai/run/{config.CLOUDFLARE_TEXT_MODEL}"
+        f"{config.CLOUDFLARE_ACCOUNT_ID}/ai/run/{model or config.CLOUDFLARE_TEXT_MODEL}"
     )
     headers = {"Authorization": f"Bearer {config.CLOUDFLARE_API_TOKEN}"}
+    if "gpt-oss" in (model or config.CLOUDFLARE_TEXT_MODEL):
+        # OpenAI Responses 형식 모델(2026-10-29 확인): instructions/input으로 받고 output[]으로 돌려준다.
+        effort = config.TEXT_MODEL_REASONING_EFFORT
+        payload = {"instructions": system_prompt, "input": user_content, "reasoning": {"effort": effort}}
+        if max_tokens:
+            payload["max_output_tokens"] = max_tokens
+        resp = post_with_retry(url, json=payload, headers=headers, timeout=120)
+        resp.raise_for_status()
+        result = resp.json().get("result") or {}
+        texts = [
+            part.get("text", "")
+            for block in result.get("output", []) if block.get("type") == "message"
+            for part in block.get("content", []) if part.get("type") == "output_text"
+        ]
+        if not texts:
+            raise RuntimeError(f"텍스트 모델 응답에 본문 없음: status={result.get('status')}")
+        return "".join(texts).strip()
+
     payload = {
         "messages": [
             {"role": "system", "content": system_prompt},

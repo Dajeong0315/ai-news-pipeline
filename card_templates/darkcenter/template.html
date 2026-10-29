@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- darkcenter: 어두운 사진 + 가운데 흰 제목 + 위 작은 컬러 라벨 + 아래 워드마크, 설명 장은 검은 바탕 흰 메모 카드 (레퍼런스: De:part) -->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --label: #A6E3C1; }
+  .slide { color: #fff; font-family: "Pretendard", sans-serif; text-align: center; }
+  .slide .shade { background: rgba(0,0,0,.5); }
+  .content { left: 90px; right: 90px; top: 50%; transform: translateY(-50%); }
+  .slide .content .kicker { display: none; } /* 위 라벨은 .deco의 .toplabel로 따로 그림 */
+  .slide .deco .toplabel { top: 92px; left: 0; right: 0; font-size: 28px; font-weight: 700; letter-spacing: .16em; color: var(--label); }
+  .body { margin-top: 30px; font-size: 40px; line-height: 1.6; color: rgba(255,255,255,.85); font-weight: 500; }
+  .title { font-size: 84px; font-weight: 700; line-height: 1.34; letter-spacing: -.035em; }
+  h2.title { font-size: 70px; }
+  .subtitle { margin-top: 30px; font-size: 36px; color: rgba(255,255,255,.75); font-weight: 500; line-height: 1.5; }
+  .value { font-size: 220px; font-weight: 800; letter-spacing: -.05em; line-height: 1; }
+  .label { margin-top: 36px; font-size: 48px; font-weight: 600; line-height: 1.4; }
+  .note { margin-top: 26px; font-size: 32px; color: rgba(255,255,255,.65); }
+  .compare { margin: 56px auto 0; display: flex; justify-content: center; gap: 70px; }
+  .compare li { display: flex; flex-direction: column; gap: 14px; }
+  .c-label { font-size: 38px; color: rgba(255,255,255,.75); font-weight: 600; }
+  .c-value { font-size: 120px; font-weight: 800; letter-spacing: -.04em; }
+  .items { margin-top: 40px; display: inline-flex; flex-direction: column; gap: 20px; text-align: left; }
+  .items li { display: flex; gap: 20px; font-size: 44px; font-weight: 600; }
+  .items .n { color: var(--label); }
+
+  /* 메모 카드 변형: 검은 바탕 + 흰 카드 + 손글씨 */
+  .note-card .bg, .note-card .shade { display: none; }
+  .note-card { background: #000; }
+  .note-card .content { left: 120px; right: 120px; }
+  .note-card .card { background: #fff; color: #1a1a1a; border-radius: 34px; padding: 70px 64px; text-align: left; }
+  .note-card .card .title { font-size: 54px; line-height: 1.35; color: #1a1a1a; }
+  .note-card .card .body, .note-card .card .quote, .note-card .card li { font-family: "Nanum Pen Script", cursive; font-size: 62px; line-height: 1.3; color: #1a1a1a; }
+  .note-card .card .body { margin-top: 26px; }
+  .note-card .card .source { margin-top: 30px; font-family: "Nanum Pen Script", cursive; font-size: 46px; color: #555; }
+  .note-card .card .items { display: flex; margin-top: 24px; }
+  .note-card .card .items .n { color: #1a1a1a; font-family: "Pretendard"; font-size: 40px; }
+  .note-card .deco .spark { width: 70px; left: 50%; margin-left: -35px; bottom: 210px; color: #fff; }
+
+  .slide .foot { left: 0; right: 0; bottom: 70px; justify-content: center; }
+  .foot .wordmark { font-size: 42px; font-weight: 800; letter-spacing: -.02em; }
+  .foot .wordmark i { font-style: normal; color: var(--label); }
+</style></head>
+<body><div id="deck"></div>
+<script>
+window.TEMPLATE = {
+  variant: (slide) => (["point", "quote", "list"].includes(slide.kind) ? "note-card" : ""),
+  content: (slide, ctx, base) => (["point", "quote", "list"].includes(slide.kind) ? `<div class="card">${base(slide)}</div>` : base(slide)),
+  deco: (slide, ctx) => `<div class="toplabel">${ctx.esc(slide.kicker || ctx.brand.series || "")}</div>` +
+    (["point", "quote", "list"].includes(slide.kind) ? `<span class="spark">${ctx.doodles.sparkle}</span>` : ""),
+  foot: (slide, ctx) => `<footer class="foot"><span class="wordmark">${ctx.esc(ctx.brand.wordmark || ctx.brand.name).replace(" ", "<i>:</i>")}</span></footer>`,
+};
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>

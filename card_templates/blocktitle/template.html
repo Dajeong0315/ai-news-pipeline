@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- blocktitle: 다큐 사진 풀블리드 + 글자 하나씩 색 블록 타일 + 왼쪽 아래 흰 제목 + 알약 라벨 (레퍼런스: 토스뱅크 시리즈 공지) -->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  .slide { color: #fff; font-family: "Pretendard", sans-serif; }
+  .slide .shade { background: linear-gradient(180deg, rgba(0,0,0,.25) 0%, rgba(0,0,0,0) 25%, rgba(0,0,0,0) 45%, rgba(0,0,0,.75) 100%); }
+  .slide:not(.k-cover) .bg img { filter: brightness(.6) saturate(.85); }
+  .slide:not(.k-cover) .shade { background: linear-gradient(180deg, rgba(0,0,0,.2), rgba(0,0,0,.65)); }
+  .content { left: 72px; right: 72px; bottom: 140px; }
+  .slide .deco .pill { top: 70px; left: 70px; border: 3px solid #fff; border-radius: 999px; padding: 10px 34px 12px; font-size: 36px; font-weight: 600; }
+  .content .kicker { display: none; }
+  .tiles { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 40px; }
+  .tile { font-family: "Black Han Sans", sans-serif; color: #141414; width: 150px; height: 150px; display: grid; place-items: center; font-size: 110px;
+          border: 3px solid #141414; box-shadow: 0 10px 22px rgba(0,0,0,.25); }
+  .tile:nth-child(6n+1) { background: #F4EBDA; transform: rotate(-3deg) translateY(10px); }
+  .tile:nth-child(6n+2) { background: #F4EBDA; transform: rotate(2deg); }
+  .tile:nth-child(6n+3) { background: #ECECEC; transform: rotate(-2deg) translateY(18px); }
+  .tile:nth-child(6n+4) { background: #8DC14B; transform: rotate(3deg) translateY(-6px); }
+  .tile:nth-child(6n+5) { background: #5BA3E6; transform: rotate(-2deg) translateY(16px); }
+  .tile:nth-child(6n+6) { background: #5BA3E6; transform: rotate(2deg) translateY(-10px); }
+  .tiles.small .tile { width: 112px; height: 112px; font-size: 80px; }
+  .slide .deco .tiles { left: 72px; right: 72px; top: 470px; justify-content: center; }
+  .title { font-size: 84px; font-weight: 800; line-height: 1.24; letter-spacing: -.035em; text-shadow: 0 2px 20px rgba(0,0,0,.35); }
+  h2.title { font-size: 68px; }
+  .subtitle { margin-top: 22px; font-size: 38px; font-weight: 600; opacity: .92; }
+  .value .tile { width: 168px; height: 200px; font-size: 140px; }
+  .label { font-size: 50px; font-weight: 700; line-height: 1.4; margin-top: 10px; }
+  .note { margin-top: 20px; font-size: 32px; opacity: .8; }
+  .body { margin-top: 30px; font-size: 42px; line-height: 1.6; font-weight: 500; }
+  .compare { margin-top: 40px; display: flex; flex-direction: column; gap: 30px; }
+  .compare li { display: flex; flex-direction: column; gap: 12px; }
+  .c-label { font-size: 40px; font-weight: 700; }
+  .items { margin-top: 36px; display: flex; flex-direction: column; gap: 22px; }
+  .items li { display: flex; gap: 22px; align-items: center; font-size: 44px; font-weight: 600; }
+  .items .n { font-family: "Black Han Sans"; color: #141414; background: #F4EBDA; border: 3px solid #141414; width: 72px; height: 72px; display: grid; place-items: center; flex-shrink: 0; }
+  .quote { font-size: 74px; font-weight: 800; line-height: 1.3; }
+  .quote::before { content: "“"; } .quote::after { content: "”"; }
+  .foot { left: 72px; right: 72px; bottom: 56px; font-size: 30px; font-weight: 700; }
+  .foot .wordmark { font-size: 40px; font-weight: 800; display: flex; gap: 12px; align-items: center; }
+</style></head>
+<body><div id="deck"></div>
+<script>
+const tiles = (s, cls = "") => `<span class="tiles ${cls}">${[...String(s)].filter((c) => c.trim()).map((c) => `<span class="tile">${window.esc(c)}</span>`).join("")}</span>`;
+window.TEMPLATE = {
+  value: (v, small) => tiles(v, small ? "small" : ""),
+  deco: (slide, ctx) => `<span class="pill">${ctx.esc(slide.kicker || ctx.brand.series || "Notice")}</span>` +
+    (slide.kind === "cover" ? tiles(ctx.brand.wordmark.replace(/\s/g, "")) : ""),
+  foot: (slide, ctx) => `<footer class="foot"><span>${ctx.i}/${ctx.n}</span><span class="wordmark">${ctx.esc(ctx.brand.emoji || "")} ${ctx.esc(ctx.brand.wordmark)}</span></footer>`,
+};
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>

@@ -1,0 +1,17 @@
+{
+  "name": "묘한 경제",
+  "handle": "@myohan.economy",
+  "wordmark": "묘한 경제",
+  "series": "숫자로 보는 경제",
+  "emoji": "🐾",
+  "mascots": {
+    "default": "../../assets/character/cat-default.png",
+    "cover": "../../assets/character/cat-surprised.png",
+    "stat": "../../assets/character/cat-money.png",
+    "compare": "../../assets/character/cat-magnify.png",
+    "point": "../../assets/character/cat-thinking.png",
+    "list": "../../assets/character/cat-explain.png",
+    "quote": "../../assets/character/cat-explain.png",
+    "closing": "../../assets/character/cat-cheer.png"
+  }
+}

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- moody: 탈색한 감성 사진 + 세리프 제목 + 흰 하이라이트 박스 + 손글씨 메모·화살표 + 스티커 컷아웃 (레퍼런스: 무드 에디토리얼 피드) -->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&family=Noto+Serif+KR:wght@500;700;900&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --serif: "Noto Serif KR", serif; --hand: "Nanum Pen Script", cursive; }
+  .slide { color: #fff; font-family: "Pretendard", sans-serif; }
+  .slide .bg img { filter: grayscale(.85) brightness(.72) contrast(1.06); }
+  .slide .shade { background: linear-gradient(180deg, rgba(20,18,16,.55) 0%, rgba(20,18,16,.1) 45%, rgba(20,18,16,.45) 100%); }
+  .content { left: 86px; right: 86px; top: 110px; }
+
+  .kicker { display: inline-block; background: #fff; color: #1d1b19; font-family: var(--serif); font-weight: 700;
+            font-size: 40px; padding: 6px 18px 8px; margin-bottom: 18px; letter-spacing: -.02em; }
+  .title { font-family: var(--serif); font-weight: 900; font-size: 96px; line-height: 1.18; letter-spacing: -.045em; text-shadow: 0 2px 18px rgba(0,0,0,.35); }
+  h2.title { font-size: 72px; }
+  .subtitle { font-family: var(--hand); font-size: 64px; line-height: 1.15; margin-top: 34px; max-width: 640px; transform: rotate(-2deg); }
+  .body { font-family: var(--hand); font-size: 58px; line-height: 1.32; margin-top: 40px; max-width: 820px; }
+  .value { font-family: var(--serif); font-weight: 900; font-size: 230px; letter-spacing: -.05em; line-height: 1; margin-top: 30px; }
+  .label { font-family: var(--serif); font-weight: 700; font-size: 50px; line-height: 1.38; margin-top: 30px; max-width: 760px; }
+  .note, .source { font-family: var(--hand); font-size: 50px; margin-top: 24px; opacity: .92; }
+  .compare { margin-top: 56px; display: flex; flex-direction: column; gap: 36px; }
+  .compare li { display: flex; align-items: baseline; gap: 34px; }
+  .c-label { font-family: var(--hand); font-size: 60px; min-width: 260px; }
+  .c-value { font-family: var(--serif); font-weight: 900; font-size: 120px; letter-spacing: -.04em; }
+  .compare li:first-child .c-value { background: #fff; color: #1d1b19; padding: 0 18px 6px; }
+  .items { margin-top: 44px; display: flex; flex-direction: column; gap: 22px; }
+  .items li { font-family: var(--hand); font-size: 58px; display: flex; gap: 22px; align-items: baseline; }
+  .items .n::before { content: "✓"; } .items .n { font-size: 48px; color: transparent; text-shadow: 0 0 0 #fff; }
+  .quote { font-family: var(--hand); font-size: 96px; line-height: 1.12; transform: rotate(-3deg); margin-top: 160px; }
+  .quote::before { content: "“"; } .quote::after { content: "”"; }
+
+  .deco .mascot { width: 380px; right: 70px; bottom: 90px; }
+  .k-cover .deco .mascot { width: 470px; right: 40px; bottom: 60px; }
+  .deco .doodle { color: #fff; }
+  .deco .d1 { width: 170px; left: 110px; bottom: 360px; transform: rotate(8deg); }
+  .deco .d2 { width: 46px; right: 470px; bottom: 520px; }
+  .deco .d3 { width: 30px; right: 430px; bottom: 470px; }
+  .deco .d4 { width: 120px; left: 120px; bottom: 170px; }
+  .deco .tag { font-family: var(--hand); font-size: 46px; color: #fff; left: 300px; bottom: 300px; transform: rotate(-6deg); }
+  .k-cover .deco .tag { left: 120px; bottom: 210px; }
+
+  .foot { left: 86px; right: 86px; bottom: 50px; font-family: var(--hand); font-size: 40px; opacity: .85; }
+</style></head>
+<body><div id="deck"></div>
+<script>
+window.TEMPLATE = {
+  deco(slide, ctx) {
+    const d = ctx.doodles;
+    const tag = { cover: "넘겨서 확인 →", stat: "기억해 둘 숫자", compare: "같은 기간, 다른 결과", point: "여기가 포인트", closing: "저장해 두기" }[slide.kind] || "";
+    return `${ctx.mascot ? `<img class="mascot sticker-img" src="${ctx.esc(ctx.mascot)}">` : ""}
+      <span class="doodle d1">${slide.kind === "cover" ? d.arrowCurve : d.swirl}</span>
+      <span class="doodle d2">${d.sparkle}</span><span class="doodle d3">${d.sparkleLine}</span>
+      ${tag && slide.kind !== "quote" ? `<span class="tag">${tag}</span>` : ""}`;
+  },
+};
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>

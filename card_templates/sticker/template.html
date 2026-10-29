@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- sticker: 밝은 회색 사진 + 노란 굵은 테두리 글씨 + 노란 알약 라벨 + 스티커 콜라주 (레퍼런스: 옐로 스티커 피드) -->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --yellow: #FFD84A; --ink: #2E2B28; --display: "Jua", sans-serif; --round: "Jua", sans-serif; }
+  .slide { color: var(--ink); font-family: "Pretendard", sans-serif; }
+  .slide .bg img { filter: saturate(.75) brightness(1.02); }
+  .slide .shade { background: rgba(240,240,238,.28); }
+  .content { left: 80px; right: 80px; top: 50%; transform: translateY(-50%); text-align: center; }
+
+  .outline { color: #fff; -webkit-text-stroke: 14px var(--ink); paint-order: stroke fill; }
+  .title { font-family: var(--display); font-size: 132px; line-height: 1.14; letter-spacing: -.01em; }
+  .title { color: #fff; -webkit-text-stroke: 11px var(--ink); paint-order: stroke fill; letter-spacing: .01em; }
+  h2.title { -webkit-text-stroke: 9px var(--ink); }
+  .title em { font-style: normal; color: var(--yellow); }
+  h2.title { font-size: 92px; }
+  .kicker { display: inline-block; background: var(--yellow); font-family: var(--round); font-size: 42px; padding: 10px 34px 12px;
+            border-radius: 999px; border: 4px solid var(--ink); transform: rotate(-3deg); margin-bottom: 30px; }
+  .subtitle { display: inline-block; margin-top: 34px; background: #fff; font-family: var(--round); font-size: 40px; padding: 12px 30px 14px;
+              border-radius: 999px; border: 4px solid var(--ink); transform: rotate(2deg); }
+  .value { font-family: var(--display); font-size: 260px; line-height: 1; color: var(--yellow); -webkit-text-stroke: 14px var(--ink); paint-order: stroke fill; }
+  .label, .note, .body, .source { background: #fff; border: 4px solid var(--ink); border-radius: 34px; }
+  .label { font-family: var(--round); font-size: 50px; line-height: 1.35; padding: 26px 38px; margin-top: 34px; display: inline-block; }
+  .note, .source { font-size: 32px; padding: 14px 28px; margin-top: 22px; display: inline-block; font-weight: 600; transform: rotate(-1deg); }
+  .body { font-family: var(--round); font-size: 46px; line-height: 1.5; padding: 34px 40px; margin-top: 40px; text-align: left; transform: rotate(-1deg); }
+  .compare { margin-top: 44px; display: flex; flex-direction: column; gap: 26px; }
+  .compare li { display: flex; justify-content: space-between; align-items: center; background: #fff; border: 4px solid var(--ink); border-radius: 34px; padding: 18px 40px; }
+  .compare li:nth-child(odd) { transform: rotate(-1.5deg); } .compare li:nth-child(even) { transform: rotate(1.5deg); }
+  .c-label { font-family: var(--round); font-size: 50px; }
+  .c-value { font-family: var(--display); font-size: 104px; color: var(--yellow); -webkit-text-stroke: 9px var(--ink); paint-order: stroke fill; }
+  .items { margin-top: 40px; display: flex; flex-direction: column; gap: 22px; text-align: left; }
+  .items li { display: flex; gap: 22px; align-items: center; background: #fff; border: 4px solid var(--ink); border-radius: 30px; padding: 20px 30px; font-family: var(--round); font-size: 44px; }
+  .items .n { background: var(--yellow); border: 4px solid var(--ink); border-radius: 50%; width: 64px; height: 64px; display: grid; place-items: center; flex-shrink: 0; }
+  .quote { font-family: var(--display); font-size: 104px; line-height: 1.16; color: #fff; -webkit-text-stroke: 14px var(--ink); paint-order: stroke fill; }
+
+  .deco .m1 { width: 330px; right: 40px; bottom: 60px; transform: rotate(6deg); }
+  .deco .m2 { width: 250px; left: 40px; top: 70px; transform: rotate(-10deg); }
+  .deco .ic { color: #fff; filter: drop-shadow(0 4px 6px rgba(0,0,0,.18)); }
+  .deco .r1 { width: 110px; right: 120px; top: 120px; color: #F7B8C8; }
+  .deco .f1 { width: 90px; left: 90px; bottom: 210px; color: #fff; }
+  .deco .s1 { width: 60px; right: 380px; bottom: 320px; color: var(--yellow); }
+  .deco .s2 { width: 40px; left: 330px; top: 140px; color: #fff; }
+  .foot { left: 70px; right: 70px; bottom: 44px; font-family: var(--round); font-size: 32px; color: var(--ink); }
+  .foot .handle { background: #fff; border-radius: 999px; padding: 6px 22px; border: 3px solid var(--ink); }
+  .foot .page { display: none; }
+</style></head>
+<body><div id="deck"></div>
+<script>
+window.TEMPLATE = {
+  // 제목 속 숫자·따옴표 구간을 노란색으로 강조
+  content(slide, ctx, base) {
+    const html = base(slide);
+    return html.replace(/(<h[12] class="title">)([\s\S]*?)(<\/h[12]>)/, (_, a, t, b) =>
+      a + t.replace(/(\d[\d.,%~]*\S*)/g, "<em>$1</em>") + b);
+  },
+  deco(slide, ctx) {
+    const d = ctx.doodles, cover = slide.kind === "cover";
+    return `${ctx.mascot ? `<img class="m1 sticker-img" src="${ctx.esc(ctx.mascot)}">` : ""}
+      ${cover && ctx.brand.mascots.default ? `<img class="m2 sticker-img" src="${ctx.esc(ctx.brand.mascots.default)}">` : ""}
+      <span class="ic r1">${d.ribbon}</span><span class="ic f1">${d.flower}</span>
+      <span class="ic s1">${d.sparkle}</span><span class="ic s2">${d.sparkle}</span>`;
+  },
+};
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- gallery: 명화/사진 풀블리드 + 하단 흰 굵은 제목 (레퍼런스: 세계문학 큐레이션 계정) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --ink: #fff; --sub: rgba(255,255,255,.78); --accent: #F3D9A4; }
+  .slide { font-family: "Pretendard", sans-serif; color: var(--ink); }
+  .slide .bg img { filter: saturate(.95); }
+  .k-cover .shade { background: linear-gradient(180deg, rgba(0,0,0,0) 38%, rgba(0,0,0,.35) 60%, rgba(0,0,0,.82) 100%); }
+  .slide:not(.k-cover) .bg img { filter: blur(14px) brightness(.55) saturate(.8); transform: scale(1.08); }
+  .slide:not(.k-cover) .shade { background: linear-gradient(180deg, rgba(10,8,6,.35), rgba(10,8,6,.55)); }
+
+  .content { left: 84px; right: 84px; bottom: 150px; }
+  .k-cover .content { bottom: 120px; }
+  .kicker { font-size: 34px; font-weight: 600; color: var(--sub); margin-bottom: 18px; letter-spacing: -.01em; }
+  .title { font-size: 92px; font-weight: 800; line-height: 1.22; letter-spacing: -.035em; text-shadow: 0 2px 24px rgba(0,0,0,.35); }
+  h2.title { font-size: 72px; }
+  .subtitle { margin-top: 26px; font-size: 38px; font-weight: 500; color: var(--sub); line-height: 1.45; }
+  .value { font-size: 230px; font-weight: 800; letter-spacing: -.05em; line-height: 1; color: var(--accent); }
+  .label { margin-top: 30px; font-size: 52px; font-weight: 700; line-height: 1.35; letter-spacing: -.02em; }
+  .note, .source { margin-top: 26px; font-size: 32px; color: var(--sub); line-height: 1.5; }
+  .body { margin-top: 34px; font-size: 42px; font-weight: 500; line-height: 1.6; color: rgba(255,255,255,.92); }
+  .compare { margin-top: 44px; display: flex; flex-direction: column; gap: 22px; }
+  .compare li { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid rgba(255,255,255,.28); padding-bottom: 20px; }
+  .c-label { font-size: 44px; font-weight: 600; }
+  .c-value { font-size: 96px; font-weight: 800; color: var(--accent); letter-spacing: -.04em; }
+  .items { margin-top: 40px; display: flex; flex-direction: column; gap: 26px; }
+  .items li { display: flex; gap: 24px; font-size: 44px; font-weight: 600; line-height: 1.45; }
+  .items .n { color: var(--accent); font-weight: 800; min-width: 40px; }
+  .quote { font-size: 76px; font-weight: 800; line-height: 1.32; letter-spacing: -.03em; }
+  .quote::before { content: "“"; } .quote::after { content: "”"; }
+  .k-quote .content, .k-closing .content, .k-stat .content { bottom: 50%; transform: translateY(50%); }
+
+  .foot { left: 84px; right: 84px; bottom: 56px; font-size: 26px; color: rgba(255,255,255,.7); font-weight: 600; letter-spacing: .02em; }
+  .k-cover .foot .page { display: none; }
+</style></head>
+<body><div id="deck"></div>
+<script>window.TEMPLATE = {};</script>
+<script src="../_shared/engine.js"></script>
+</body></html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- cutout: 질감 배경 + 가운데 큰 인물·캐릭터 컷아웃(흰 테두리) + 주변 아이콘 스티커 + 아래 이모지 라벨·굵은 제목 (레퍼런스: 하나 IRP 숏폼 썸네일) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --accent: #3FB68B; }
+  .slide { color: #fff; font-family: "Pretendard", sans-serif; }
+  .slide .bg img { filter: brightness(.62) saturate(.7); }
+  .slide .shade { background: radial-gradient(ellipse at 50% 40%, rgba(0,0,0,0) 30%, rgba(0,0,0,.45) 100%), linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.7) 100%); }
+  .content { left: 72px; right: 72px; bottom: 110px; }
+  .kicker { font-size: 40px; font-weight: 700; margin-bottom: 16px; }
+  .title { font-size: 86px; font-weight: 800; line-height: 1.22; letter-spacing: -.04em; text-shadow: 0 3px 24px rgba(0,0,0,.45); }
+  h2.title { font-size: 66px; }
+  .play { display: inline-grid; place-items: center; width: 74px; height: 74px; border: 5px solid #fff; border-radius: 50%; vertical-align: middle; margin-left: 14px; font-size: 30px; }
+  .subtitle { margin-top: 20px; font-size: 38px; font-weight: 600; opacity: .9; }
+  .value { font-size: 240px; font-weight: 900; letter-spacing: -.05em; line-height: 1; text-shadow: 0 4px 30px rgba(0,0,0,.4); }
+  .label { margin-top: 24px; font-size: 52px; font-weight: 700; line-height: 1.35; }
+  .note { margin-top: 18px; font-size: 32px; opacity: .85; }
+  .body { margin-top: 26px; font-size: 42px; line-height: 1.6; font-weight: 500; background: rgba(0,0,0,.45); border-radius: 28px; padding: 32px 36px; }
+  .compare { margin-top: 30px; display: flex; gap: 22px; }
+  .compare li { flex: 1; background: #fff; color: #1b1b1b; border-radius: 30px; padding: 30px 32px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 14px 30px rgba(0,0,0,.3); }
+  .compare li:first-child { transform: rotate(-2deg); } .compare li:last-child { transform: rotate(2deg); }
+  .c-label { font-size: 38px; font-weight: 700; color: #555; }
+  .c-value { font-size: 100px; font-weight: 900; letter-spacing: -.04em; color: var(--accent); }
+  .items { margin-top: 30px; display: flex; flex-direction: column; gap: 18px; }
+  .items li { display: flex; gap: 20px; align-items: center; background: #fff; color: #1b1b1b; border-radius: 26px; padding: 20px 28px; font-size: 42px; font-weight: 700; }
+  .items .n { background: var(--accent); color: #fff; width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; }
+  .quote { font-size: 74px; font-weight: 800; line-height: 1.3; }
+  .quote::before { content: "“"; } .quote::after { content: "”"; }
+
+  .deco .hero { width: 640px; left: 50%; margin-left: -320px; top: 170px; }
+  .slide:not(.k-cover) .deco .hero { width: 400px; margin-left: 0; left: auto; right: 50px; top: 120px; }
+  .deco .chip { width: 150px; height: 150px; background: #fff; border-radius: 34px; display: grid; place-items: center; box-shadow: 0 14px 28px rgba(0,0,0,.3); }
+  .deco .chip svg { width: 92px; }
+  .deco .c1 { left: 110px; top: 300px; transform: rotate(-12deg); color: var(--accent); }
+  .deco .c2 { right: 110px; top: 260px; transform: rotate(10deg); color: #F2A93B; }
+  .deco .c3 { left: 140px; top: 640px; transform: rotate(8deg); color: #5BA3E6; }
+  .slide:not(.k-cover) .deco .c3, .slide:not(.k-cover) .deco .c2 { display: none; }
+  .slide:not(.k-cover) .deco .c1 { left: 80px; top: 120px; }
+  .brandmark { position: absolute; top: 64px; left: 70px; font-size: 40px; font-weight: 900; letter-spacing: -.03em; }
+  .badge { position: absolute; top: 46px; right: 60px; width: 120px; height: 120px; border-radius: 30px; background: #fff; display: grid; place-items: center; }
+  .badge img { width: 96px; }
+  .slide:not(.k-cover) .badge { display: none; }
+  .foot { right: 72px; bottom: 50px; font-size: 28px; opacity: .75; font-weight: 600; }
+  .foot .handle { display: none; }
+</style></head>
+<body><div id="deck"></div>
+<script>
+window.TEMPLATE = {
+  content(slide, ctx, base) {
+    let html = base(slide);
+    if (slide.kind === "cover") {
+      html = html.replace('<p class="kicker">', `<p class="kicker">${ctx.esc(ctx.brand.emoji || "")} `)
+                 .replace("</h1>", '<span class="play">▶</span></h1>');
+    }
+    return html;
+  },
+  deco(slide, ctx) {
+    const d = ctx.doodles;
+    return `<span class="brandmark">${ctx.esc(ctx.brand.wordmark)}</span>
+      <span class="badge"><img src="${ctx.esc(ctx.brand.mascots.default || "")}"></span>
+      ${ctx.mascot ? `<img class="hero sticker-img" src="${ctx.esc(ctx.mascot)}">` : ""}
+      <span class="chip c1">${d.bars}</span><span class="chip c2">${d.sparkle}</span><span class="chip c3">${d.swirl}</span>`;
+  },
+};
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>
