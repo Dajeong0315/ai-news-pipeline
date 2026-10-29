@@ -63,8 +63,16 @@ function fail(message) {
         const clippedByCard = box.left < cardBox.left - 1 || box.right > cardBox.right + 1
           || box.top < cardBox.top - 1 || box.bottom > cardBox.bottom + 1;
         // 브라우저의 한글 폰트 라운딩은 1~4px 차이를 만들 수 있어 8px 허용한다.
+        // .stat-hero는 128px 숫자와 80px 화살표를 baseline 정렬로 한 줄에
+        // 섞어써서(디자인 의도) scrollHeight가 clientHeight보다 항상
+        // ~12px 더 크게 나오는 폰트 메트릭 특성이 있음(실측: stat 값과
+        // 무관하게 "16", "-1.71%" 등 어떤 내용이든 매번 12px — 2026-09-06
+        // Playwright로 직접 측정해 실제 시각적 클리핑이 아님을 확인). 이
+        // 요소만 세로 허용치를 넓게 잡아 오탐으로 인한 불필요한 재시도를
+        // 막는다.
+        const heightTolerance = item.classList.contains('stat-hero') ? 16 : 8;
         const clippedInternally = item.scrollWidth > item.clientWidth + 8
-          || item.scrollHeight > item.clientHeight + 8;
+          || item.scrollHeight > item.clientHeight + heightTolerance;
         return clippedByCard || clippedInternally;
       }).map((item) => ({ card: index + 1, className: item.className }));
     }));

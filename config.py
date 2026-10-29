@@ -14,13 +14,14 @@ TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
 CLOUDFLARE_API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "")
 
-CLOUDFLARE_TEXT_MODEL = os.environ.get("CLOUDFLARE_TEXT_MODEL", "@cf/meta/llama-3.1-8b-instruct")
+CLOUDFLARE_TEXT_MODEL = os.environ.get("CLOUDFLARE_TEXT_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 POSE_GEN_MODEL = os.environ.get("POSE_GEN_MODEL", "@cf/black-forest-labs/flux-1-schnell")
 
 INSTAGRAM_ACCESS_TOKEN = os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
 INSTAGRAM_BUSINESS_ACCOUNT_ID = os.environ.get("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
 INSTAGRAM_API_VERSION = os.environ.get("INSTAGRAM_API_VERSION", "v21.0")
 SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "cards")
+INSTAGRAM_HANDLE = os.environ.get("INSTAGRAM_HANDLE", "@myohan.economy")
 
 MAX_BACKLOG_DAYS = int(os.environ.get("MAX_BACKLOG_DAYS", 3))
 SAFE_DAILY_CLOUDFLARE_CALLS = int(os.environ.get("SAFE_DAILY_CLOUDFLARE_CALLS", 12))
@@ -30,6 +31,11 @@ MIN_LENGTH = int(os.environ.get("MIN_LENGTH", 50))
 DEDUP_SIMILARITY_THRESHOLD = float(os.environ.get("DEDUP_SIMILARITY_THRESHOLD", 70))
 TITLE_MAX_CHARS = int(os.environ.get("TITLE_MAX_CHARS", 15))
 CANDIDATES_PER_CATEGORY = int(os.environ.get("CANDIDATES_PER_CATEGORY", 5))
+SELECTION_POOL_PER_CATEGORY = int(os.environ.get("SELECTION_POOL_PER_CATEGORY", 20))
+RECENT_TOPIC_SIMILARITY_THRESHOLD = float(os.environ.get("RECENT_TOPIC_SIMILARITY_THRESHOLD", 78))
+RECENT_TOPIC_LOOKBACK = int(os.environ.get("RECENT_TOPIC_LOOKBACK", 30))
+QA_MAX_ATTEMPTS = int(os.environ.get("QA_MAX_ATTEMPTS", 3))
+QA_MIN_ARTICLE_CHARS = int(os.environ.get("QA_MIN_ARTICLE_CHARS", 400))
 
 CATEGORIES = ("index_macro", "stock", "policy_industry")
 CATEGORY_LABELS = {

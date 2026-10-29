@@ -1,47 +1,47 @@
-"""파이프라인 전체를 순서대로 1회 실행한다 (수동/스케줄 공용).
+"""일일 카드뉴스 파이프라인의 실행 진입점.
 
-collect -> clean -> send_candidates 까지 실행한 뒤, 운영자가 텔레그램에서
-카테고리당 1건씩(이월분이 있으면 그 이상) 승인할 때까지 기다렸다가, 승인이
-끝나면 이어서 cardset(기사 스크래핑 -> "묘한 경제" 브랜드 3~5장 카드 생성)
--> instagram 캐러셀 업로드 단계를 실행하면 된다. (승인은 사람이 텔레그램에서
-하는 유일한 개입 지점이라 자동 대기시키지 않는다.) publish 단계 마지막에는
-오늘 API 호출량 이상 여부도 확인한다.
-
-실행:
-    python run_daily.py collect   # 수집+정제+후보 전송까지
-    python run_daily.py publish   # 승인 완료 후 카드세트 생성~인스타 캐러셀 업로드까지
+기본 자동 모드(auto)는 수집·정제·카테고리별 자동 선정·카드 생성 QA·인스타그램
+업로드를 한 번에 실행한다. collect/publish는 문제 진단과 수동 재처리용으로 남긴다.
 """
 
 import sys
 
+import auto_select
 import check_usage
 import clean_news
 import collect_news
 import generate_cardset
 import publish_instagram
-import send_candidates
 
 
-def run_collect_phase():
+def run_collect_phase() -> None:
     collect_news.main()
     clean_news.main()
-    send_candidates.main()
+    auto_select.main()
 
 
-def run_publish_phase():
+def run_publish_phase() -> None:
     generate_cardset.main()
-    publish_instagram.main()  # INSTAGRAM_ACCESS_TOKEN 미설정 시 내부에서 조용히 건너뜀
+    publish_instagram.main()
     check_usage.main()
 
 
-def main():
-    phase = sys.argv[1] if len(sys.argv) > 1 else ""
+def run_auto_phase() -> None:
+    """사람 승인 없이 선정부터 QA·업로드까지 한 번에 실행한다."""
+    run_collect_phase()
+    run_publish_phase()
+
+
+def main() -> None:
+    phase = sys.argv[1] if len(sys.argv) > 1 else "auto"
     if phase == "collect":
         run_collect_phase()
     elif phase == "publish":
         run_publish_phase()
+    elif phase == "auto":
+        run_auto_phase()
     else:
-        print("사용법: python run_daily.py [collect|publish]")
+        print("사용법: python run_daily.py [collect|publish|auto]")
         sys.exit(1)
 
 

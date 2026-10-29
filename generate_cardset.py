@@ -1,8 +1,8 @@
-"""승인된 뉴스 원문을 읽고 "묘한 경제" 브랜드의 3~5장 카드뉴스 content.json을 만든다.
+"""승인된 뉴스 원문을 읽고 "묘한 경제" 브랜드의 4~6장 카드뉴스 content.json을 만든다.
 
 기존 카드 1장(FLUX 배경+제목)짜리 파이프라인을 대체한다. 기사 원문을
-스크래핑해 실제 사실을 근거로, 표지+핵심 1~3장+고지 구조의 카드 세트를
-LLM으로 생성하고, assets/templates/validate.js로 검증한다.
+스크래핑해 실제 사실을 근거로, 표지+용어 비유 설명+사실 근거(+의미)+고지
+구조의 카드 세트를 LLM으로 생성하고, assets/templates/validate.js로 검증한다.
 
 실행:
     python generate_cardset.py
@@ -12,8 +12,11 @@ import json
 import logging
 import re
 import subprocess
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+from PIL import Image, ImageStat
+from rapidfuzz import fuzz
 
 import config
 from db import get_client
@@ -42,37 +45,83 @@ SEASON_BY_MONTH = {
     12: "winter", 1: "winter", 2: "winter",
 }
 
-MAX_ATTEMPTS = 3
+MAX_ATTEMPTS = config.QA_MAX_ATTEMPTS
 
-SYSTEM_PROMPT = """너는 인스타그램 경제 카드뉴스 계정 "묘한 경제"(@myohan.economy)의 콘텐츠 기획자다.
-어려운 경제 뉴스를 20대 사회초년생이 이해하기 쉽게 3~5장짜리 카드 세트로 만든다.
+SYSTEM_PROMPT = """너는 인스타그램 경제 카드뉴스 계정 "묘한 경제"(@myohan.economy)의 콘텐츠 기획자이자,
+집사에게 어려운 경제 용어를 비유로 풀어서 가르쳐주는 고양이 선생님이다.
+어려운 경제 뉴스를 20대 사회초년생이 "아 그런 거였구나" 하고 이해하게 만드는 게 목표다.
+단순히 기사 내용을 요약·재진술하는 게 아니라, 매번 실제로 경제 공부가 되도록 만든다.
 
 ## 절대 규칙
 1. 카드 안의 모든 숫자·사실은 아래 [기사 원문]에 실제로 등장하는 내용만 사용한다. 원문에 없는 숫자를 지어내지 마라.
-2. 어려운 용어는 한 줄로 풀어 설명한다. 클릭베이트 금지. 친근한 해요체.
-3. 개인 맞춤 투자·재무 조언을 하지 않는다.
+2. 클릭베이트 금지. 친근한 해요체.
+3. 개인 맞춤 투자·재무 조언을 하지 않는다. 특정 종목·지역·자산을 사라고
+   유도하는 문구를 어떤 카드에도 넣지 마라(action 카드도 마찬가지 —
+   "오늘 관찰/검색/공부해볼 것" 같은 학습 행동만 제안하고, "OO에 투자하라"
+   "OO 지역 부동산을 사라" 같은 매수 유도는 절대 금지).
 4. 카드에는 출처 URL을 넣지 않는다.
-5. 카드마다 서로 다른 내용을 다뤄야 한다. 같은 사실·문장을 두 장 이상에 나눠서
-   반복하지 마라(예: 2번 카드와 3번 카드가 제목·본문이 똑같으면 안 됨).
+5. 카드마다 서로 다른 역할·내용을 맡아야 한다. 같은 사실이나 같은 설명을
+   두 장 이상에서 다른 말로 반복하지 마라(예: 2번 카드와 3번 카드가
+   제목·본문이 사실상 같은 내용이면 안 됨). 아래 "카드 역할" 구조를 따르면
+   자동으로 역할이 나뉜다.
 6. body는 반드시 "…"로 끝나는 미완성 문장이 아니라, 완결된 문장(들)으로
-   끝나야 한다. 90자 제한 안에 다 안 들어갈 것 같으면 처음부터 문장을
+   끝나야 한다. 110자 제한 안에 다 안 들어갈 것 같으면 처음부터 문장을
    짧게 나눠 써라(예: 긴 문장 하나 대신 짧은 문장 2개를 <br><br>로 연결).
-   글자 수를 맞추려고 문장 중간을 자르지 마라.
+   글자 수를 맞추려고 문장 중간을 자르지 마라. **한 문장은 되도록 40자를
+   넘기지 마라** — 쉼표로 길게 이어 쓴 한 문장은 마침표 기준으로 안 잘려서
+   전체가 통째로 잘려나갈 수 있다.
+
+## 카드 역할 구조 (반드시 이 순서·역할로 구성)
+1. **cover**: 후킹 한 줄. `stat`/`statArrow`는 표지에 128px 크기로 크게
+   박히는 요소라, **등락률·금리·환율·주가·거래대금처럼 진짜 경제 지표일
+   때만** 채워라(예: "2.75%", "-1.71%", "14개월"). "수상 16개 부문", "참가자
+   500명"처럼 단순히 원문에 등장한 숫자일 뿐 그 자체로 경제 트렌드를
+   보여주지 않는 카운트는 stat에 넣지 말고 비워둬라(hook 문장 안에 자연스럽게
+   녹여 써도 된다). 이런 진짜 경제 지표가 원문에 아예 없으면 stat/statArrow
+   필드를 통째로 생략해라.
+2. **concept** (반드시 1장 포함): 이 기사에서 가장 어려운 용어나 개념 딱
+   하나를 골라, **일상적인 비유**로 설명한다. title에는 그 용어를 그대로
+   쓰고("기준금리 동결", "HBM이 뭐길래" 처럼), body는 반드시 장보기·택배·
+   편의점·용돈·반려동물처럼 누구나 아는 일상 사물/행동에 빗대고, "~처럼",
+   "~와 비슷해요", "~라고 생각하면 돼요" 같은 연결어를 최소 1번 써서
+   설명한다. 사전적 정의를 그대로 나열하지 말 것.
+3. **why**: 기사 원문에 나온 사실 근거로 "왜 이 일이 일어났는지"를 완결된
+   문장으로 설명한다(단어·구절만 쉼표로 나열하지 말 것). concept 카드에서
+   이미 한 비유 설명을 반복하지 말고, 사실관계만 다룬다.
+4. **meaning** (선택, 카드를 5장 이상으로 구성할 때 사용): 이 트렌드가
+   20대 사회초년생 독자의 일상이나 앞으로의 경제 공부에 왜 중요한지를
+   완결된 문장으로 설명한다. concept/why와 다른 관점(영향·시사점)이어야 한다.
+5. **action**: 오늘 해볼 학습·관찰 습관을 제안한다(투자 유도 금지, 규칙 3 참고).
+6. **disclaimer**: 고정 문구(자동으로 채워짐).
+
+## 비유 좋은 예 / 나쁜 예
+- 나쁜 예(사전적 정의만 나열, 비유 없음): "HBM은 데이터를 빠르게 처리하는
+  고대역폭 메모리 반도체입니다."
+- 좋은 예(일상 비유 포함): {"type":"concept","num":"①","eyebrow":"오늘의 용어","title":"HBM이 뭐길래","body":"HBM은 반도체용 '급행 택배 전용도로'예요.<br><br>일반 도로 대신 전용도로를 깔면 택배가 훨씬 빨리 도착하듯, AI가 필요한 데이터를 더 빨리 받을 수 있어요."}
+- 좋은 예 2: {"type":"concept","num":"①","eyebrow":"오늘의 용어","title":"기준금리 동결","body":"기준금리는 은행들의 '대출 도매가' 같은 거예요.<br><br>마트 도매가가 그대로면 손님 가격도 그대로이듯, 동결되면 대출·예금 이자도 당분간 크게 안 변해요."}
+
+**주의**: 위 두 예시는 "비유를 이렇게 쓰라"는 형식 참고용일 뿐이다. 실제
+출력에서는 절대 이 예시 문장을 그대로 베끼지 말고, 이번 기사의 실제 용어에
+맞는 새로운 비유를 직접 만들어라(같은 용어가 다시 나와도 매번 다른 비유를
+시도할 것 — 예: 택배·마트·용돈·버스·편의점 중 매번 다른 소재를 골라본다).
 
 ## 출력 형식 (JSON만 출력, 설명 텍스트 붙이지 마라)
 {
   "cards": [
-    {"type":"cover","badge":"짧고 후킹되는 배지 문구(이모지 1개 포함, 20자 이내)","hook":"핵심 한 줄(20자 이내)","stat":"핵심 숫자(있으면, 예: 2.75%)","statArrow":"↑ 또는 ↓(stat 있을 때만)","sub":"부제(선택, 20자 이내)","char":"포즈이름"},
-    {"type":"why 또는 concept 또는 meaning","num":"①②③ 중 하나(concept일 때만, 선택)","eyebrow":"소제목(선택)","title":"카드 제목(36자 이내)","body":"본문(90자 이내, 문장 사이 <br><br> 가능)","char":"포즈이름","visual":{...}},
-    ... (이런 카드 1~3장) ...
-    {"type":"action","eyebrow":"오늘 해볼 것 소개 문구","items":["실천 항목1","실천 항목2"],"char":"포즈이름"},
-    {"type":"disclaimer","brand":"출처 & 안내","text":"이 콘텐츠는 교육·정보 제공용이며, 특정 투자 권유나 개인 맞춤 재무 조언이 아닙니다.","note":"자세한 출처는 캡션에서 확인하세요","handle":"@myohan.economy"}
+    {"type":"cover","badge":"짧고 후킹되는 배지 문구(이모지 1개 포함, 20자 이내)","hook":"핵심 한 줄(20자 이내)","stat":"등락률·금리·환율 등 진짜 경제 지표일 때만, 예: 2.75%(없으면 필드 자체를 생략)","statArrow":"↑ 또는 ↓(stat 있을 때만)","sub":"부제(선택, 20자 이내)","char":"포즈이름"},
+    {"type":"concept","num":"①","eyebrow":"오늘의 용어","title":"용어 그대로(36자 이내)","body":"비유로 설명(110자 이내, 40자 안팎 문장을 <br><br>로 연결)","char":"포즈이름"},
+    {"type":"why","eyebrow":"소제목(선택)","title":"카드 제목(36자 이내)","body":"원문 근거 사실(110자 이내)","char":"포즈이름","visual":{...}},
+    ... (meaning 카드를 쓸 경우 여기 1장 추가) ...
+    {"type":"action","eyebrow":"오늘 해볼 것 소개 문구","items":["학습·관찰 행동1","학습·관찰 행동2"],"char":"포즈이름"},
+    {"type":"disclaimer","brand":"출처 & 안내","text":"이 콘텐츠는 교육·정보 제공용이며, 특정 투자 권유나 개인 맞춤 재무 조언이 아닙니다.","note":"자세한 출처는 캡션에서 확인하세요","handle":config.INSTAGRAM_HANDLE}
   ],
   "caption":"인스타그램 캡션(후킹 한 줄 + 본문 사실 요약 + 핵심 takeaway, 해시태그 최대 5개 포함)"
 }
 
-카드는 반드시 첫 번째가 cover, 마지막이 disclaimer여야 하고, 전체 3~5장이어야 한다.
-action 카드는 선택사항(있으면 disclaimer 바로 앞에 배치).
+카드는 반드시 첫 번째가 cover, 마지막이 disclaimer여야 하고, concept 카드를
+1장 이상 포함해 전체 4~6장이어야 한다(설명할 용어가 정말 없는 극히 단순한
+기사일 때만 예외적으로 3장 허용). action 카드는 선택사항(있으면 disclaimer
+바로 앞에 배치).
 
 ## 사용 가능한 고양이 포즈(char 필드, 아래 목록 중 하나를 최우선으로 사용)
 __POSES__
@@ -109,10 +158,12 @@ def current_season() -> str:
 
 def fetch_approved_without_cardset() -> list[dict]:
     client = get_client()
+    approved_since = (datetime.now(timezone.utc) - timedelta(hours=config.MAX_AGE_HOURS)).isoformat()
     approved = (
         client.table("news_items")
         .select("id,title,url,category")
         .eq("status", "approved")
+        .gte("collected_at", approved_since)
         .execute()
         .data
         or []
@@ -186,14 +237,21 @@ def sanitize_cards(data: dict) -> dict:
         if card.get("title"):
             card["title"] = _truncate(card["title"], 36)
         if card.get("body"):
-            card["body"] = _truncate(card["body"], 90, strict=True)
+            card["body"] = _truncate(card["body"], 110, strict=True)
         if card.get("stat"):
             # stat-num은 128px 폰트로 표지에 크게 박히는 요소라 아주 짧아야
-            # 한다(예: "2.75%"). 한글 단어가 섞이면 글자 수가 적어도 실제
-            # 렌더 폭이 넓어 넘치는(overflow) 경우가 실측으로 반복 확인돼,
-            # 한글 2자 이상이 섞이거나 6자를 넘으면 아예 통째로 제거한다.
+            # 한다(예: "2.75%"). 한글이 섞이면 실제 렌더 폭이 넓어 카드
+            # 가로 폭을 넘치는 경우가 있어 한글이 하나라도 섞이거나 6자를
+            # 넘으면 통째로 제거한다(가로 방향 안전장치).
+            #
+            # 참고: stat-hero 자체의 세로 방향 "오버플로"는 한글 유무와
+            # 무관하게 stat 필드가 있으면 거의 항상 발생하던 별개의 문제였고,
+            # 원인은 이 값이 아니라 render.js의 오탐(폰트 메트릭 오차)이었음
+            # — 2026-09-06 PROGRESS.md "남은 이슈" 참고, render.js에서
+            # 수정함. 이 hangul 제거 로직은 그 문제와는 무관하지만 가로 폭
+            # 안전장치로는 유효해 그대로 둔다.
             hangul_count = sum("가" <= ch <= "힣" for ch in card["stat"])
-            if hangul_count >= 2 or len(card["stat"]) > 6:
+            if hangul_count >= 1 or len(card["stat"]) > 6:
                 card.pop("stat", None)
                 card.pop("statArrow", None)
             else:
@@ -217,7 +275,7 @@ def sanitize_cards(data: dict) -> dict:
             card["brand"] = "출처 & 안내"
             card["text"] = "이 콘텐츠는 교육·정보 제공용이며, 특정 투자 권유나 개인 맞춤 재무 조언이 아닙니다."
             card["note"] = "자세한 출처는 캡션에서 확인하세요"
-            card["handle"] = "@myohan.economy"
+            card["handle"] = config.INSTAGRAM_HANDLE
 
         visual = card.get("visual")
         if visual is not None:
@@ -235,19 +293,73 @@ def sanitize_cards(data: dict) -> dict:
     return data
 
 
+_STRAY_SCRIPT_RE = re.compile(r"[぀-ヿ㐀-鿿]")  # 히라가나/가타카나 + 한자(간지/한지)
+
+
+def _check_no_stray_script(data: dict) -> None:
+    """모델이 가끔 한국어 문장 중간에 일본어·한자를 잘못 끼워 넣는 경우가
+    실측으로 두 건 확인됨(2026-09-06): "관심을 가지기" 자리에
+    "관심を持기"(히라가나 조사+한자 동사), "영향" 자리에 "影響"(한자
+    그대로)이 나옴. 이 브랜드의 카드 카피는 항상 순수 한글(+영어 약어·숫자)만
+    쓰므로, 한자·가나가 하나라도 섞이면 오류로 보고 예외를 던져 재생성을
+    유도한다. validate.js에는 문자셋 검사가 없어 그대로 통과했던 것."""
+    for card in data.get("cards", []):
+        texts = [
+            card.get(k) for k in ("badge", "hook", "sub", "eyebrow", "title", "body")
+        ]
+        texts.extend(card.get("items") or [])
+        for text in texts:
+            if text and _STRAY_SCRIPT_RE.search(text):
+                raise ValueError(f"카드 텍스트에 일본어 문자 혼입 감지: {text!r}")
+
+
+NEAR_DUPLICATE_THRESHOLD = 85
+
+
 def _check_no_duplicate_cards(data: dict) -> None:
     """LLM이 같은 내용을 카드 2장에 나눠 그대로 반복하는 경우가 실제로
     확인돼(운영자 피드백, 2026-09-06 — 반도체 카드 2번/3번이 제목·본문 모두
-    동일), cover/disclaimer/action을 제외한 본문 카드끼리 title+body가
-    겹치면 예외를 던져 재생성을 유도한다(process_item의 재시도 루프가 처리)."""
-    seen = set()
+    동일), cover/disclaimer/action을 제외한 본문 카드끼리 내용이 겹치면
+    예외를 던져 재생성을 유도한다(process_item의 재시도 루프가 처리).
+
+    완전 일치뿐 아니라 "제목만 바꾸고 사실상 같은 문장을 반복"하는 근접
+    중복도 잡기 위해, clean_news.py의 기사 중복 제거와 동일한 rapidfuzz
+    유사도 비교를 body 텍스트에 적용한다(카드 역할을 concept/why/meaning으로
+    세분화하면서 생긴 반복 위험 — 위 설계 결정 참고)."""
+    bodies: list[str] = []
     for card in data.get("cards", []):
         if card.get("type") in ("cover", "disclaimer", "action"):
             continue
-        key = (card.get("title"), card.get("body"))
-        if key != (None, None) and key in seen:
-            raise ValueError(f"카드 내용 중복 감지(title={card.get('title')!r})")
-        seen.add(key)
+        title, body = card.get("title"), card.get("body")
+        if (title, body) == (None, None):
+            continue
+        combined = f"{title or ''} {body or ''}".strip()
+        for prev in bodies:
+            if fuzz.token_sort_ratio(combined, prev) >= NEAR_DUPLICATE_THRESHOLD:
+                raise ValueError(f"카드 내용 근접 중복 감지(title={title!r})")
+        bodies.append(combined)
+
+
+FEWSHOT_EXAMPLE_BODIES = [
+    "HBM은 반도체용 '급행 택배 전용도로'예요. 일반 도로 대신 전용도로를 깔면 택배가 훨씬 빨리 도착하듯, AI가 필요한 데이터를 더 빨리 받을 수 있어요.",
+    "기준금리는 은행들의 '대출 도매가' 같은 거예요. 마트 도매가가 그대로면 손님 가격도 그대로이듯, 동결되면 대출·예금 이자도 당분간 크게 안 변해요.",
+]
+FEWSHOT_ECHO_THRESHOLD = 80
+
+
+def _check_no_prompt_echo(data: dict) -> None:
+    """소형/중형 모델이 시스템 프롬프트의 few-shot 비유 예시 문장을 그대로
+    베껴 쓰는 경향이 실측으로 확인됨(예: 금리 관련 기사마다 매번 "대출
+    도매가" 비유를 토씨 하나 안 틀리고 재사용) — "매번 다른 비유를 만들어라"
+    지시만으로는 부족해서, 코드로 예시 문장과의 유사도를 검사해 강제로
+    재생성을 유도한다(few-shot 예시가 실제 출력에 새는 것을 막는 안전망)."""
+    for card in data.get("cards", []):
+        body = card.get("body")
+        if not body:
+            continue
+        for example in FEWSHOT_EXAMPLE_BODIES:
+            if fuzz.token_sort_ratio(body, example) >= FEWSHOT_ECHO_THRESHOLD:
+                raise ValueError(f"프롬프트 예시 문장을 그대로 베낌(title={card.get('title')!r})")
 
 
 def build_content_json(title: str, article_text: str, category: str) -> dict:
@@ -258,7 +370,7 @@ def build_content_json(title: str, article_text: str, category: str) -> dict:
     article_block = article_text if article_text else "(원문을 가져오지 못함, 제목 정보만으로 신중하게 작성)"
     user_content = f"제목: {title}\n\n[기사 원문]\n{article_block}"
 
-    raw = call_text_model(system_prompt, user_content, max_tokens=1200)
+    raw = call_text_model(system_prompt, user_content, max_tokens=1800)
     raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.strip("`")
@@ -266,9 +378,39 @@ def build_content_json(title: str, article_text: str, category: str) -> dict:
             raw = raw[4:]
     data = json.loads(raw)
     _check_no_duplicate_cards(data)
+    _check_no_prompt_echo(data)
+    _check_no_stray_script(data)
     data["season"] = current_season()
-    data["handle"] = "@myohan.economy"
+    data["handle"] = config.INSTAGRAM_HANDLE
     return sanitize_cards(data)
+
+
+def check_content_quality(content: dict, caption: str, article_text: str) -> None:
+    """업로드 전 편집 품질 게이트. 실패하면 폴백 게시 대신 재생성한다."""
+    cards = content.get("cards") or []
+    types = [card.get("type") for card in cards]
+    if len(article_text.strip()) < config.QA_MIN_ARTICLE_CHARS:
+        raise ValueError(f"원문이 QA 최소 분량 미달: {len(article_text.strip())}자")
+    if not 4 <= len(cards) <= 6:
+        raise ValueError("QA: 카드 수는 4~6장이어야 함")
+    if types.count("cover") != 1 or types.count("disclaimer") != 1:
+        raise ValueError("QA: 표지와 고지 카드는 각각 1장이어야 함")
+    if "concept" not in types or "why" not in types:
+        raise ValueError("QA: 개념 설명과 사실 근거 카드가 필요함")
+    if not caption or len(caption.strip()) < 40:
+        raise ValueError("QA: 캡션이 너무 짧음")
+
+
+def check_rendered_images(out_dir: Path, expected_count: int) -> None:
+    pngs = sorted(out_dir.glob("[0-9][0-9].png"))
+    if len(pngs) != expected_count:
+        raise ValueError(f"QA: 렌더 이미지 수 불일치({len(pngs)}/{expected_count})")
+    for image_path in pngs:
+        with Image.open(image_path) as image:
+            if image.size != (1080, 1350):
+                raise ValueError(f"QA: 잘못된 이미지 크기 {image_path.name}: {image.size}")
+            if max(ImageStat.Stat(image.convert("RGB")).var) < 2:
+                raise ValueError(f"QA: 빈 이미지 의심: {image_path.name}")
 
 
 def validate_content(content_path: Path) -> tuple[bool, str]:
@@ -312,6 +454,12 @@ def process_item(item: dict) -> dict | None:
         content_path = out_dir / "content.json"
         content_path.write_text(json.dumps(content, ensure_ascii=False, indent=2), encoding="utf-8")
 
+        try:
+            check_content_quality(content, caption or "", article_text)
+        except ValueError as e:
+            log.warning("[%s] 콘텐츠 QA 실패(%d/%d): %s", item["category"], attempt, MAX_ATTEMPTS, e)
+            continue
+
         ok, message = validate_content(content_path)
         if not ok:
             log.warning("[%s] 검증 실패(%d/%d): %s", item["category"], attempt, MAX_ATTEMPTS, message)
@@ -321,14 +469,16 @@ def process_item(item: dict) -> dict | None:
         if not render_cardset(content_path, out_dir):
             log.warning("[%s] 렌더 실패(오버플로 등), 콘텐츠 재생성으로 재시도(%d/%d)", item["category"], attempt, MAX_ATTEMPTS)
             continue
+        try:
+            check_rendered_images(out_dir, len(content["cards"]))
+        except ValueError as e:
+            log.warning("[%s] 렌더 QA 실패(%d/%d): %s", item["category"], attempt, MAX_ATTEMPTS, e)
+            continue
         (out_dir / "caption.txt").write_text(caption or "", encoding="utf-8")
         return {"content_path": content_path, "out_dir": out_dir, "caption": caption}
 
-    log.warning(
-        "[%s] %d회 시도 후에도 LLM 카드세트를 만들지 못해 최소 폴백으로 대체",
-        item["category"], MAX_ATTEMPTS,
-    )
-    return build_and_render_fallback(item, article_text)
+    log.error("[%s] QA를 %d회 통과하지 못해 업로드하지 않음", item["category"], MAX_ATTEMPTS)
+    return None
 
 
 def build_fallback_content(item: dict, article_text: str) -> dict:
@@ -338,7 +488,7 @@ def build_fallback_content(item: dict, article_text: str) -> dict:
     first_sentence = (article_text.split(".")[0].strip() + "." if article_text else item["title"])[:90]
     return {
         "season": current_season(),
-        "handle": "@myohan.economy",
+        "handle": config.INSTAGRAM_HANDLE,
         "cards": [
             {
                 "type": "cover",
@@ -358,7 +508,7 @@ def build_fallback_content(item: dict, article_text: str) -> dict:
                 "brand": "출처 & 안내",
                 "text": "이 콘텐츠는 교육·정보 제공용이며, 특정 투자 권유나 개인 맞춤 재무 조언이 아닙니다.",
                 "note": "자세한 출처는 캡션에서 확인하세요",
-                "handle": "@myohan.economy",
+                "handle": config.INSTAGRAM_HANDLE,
             },
         ],
     }

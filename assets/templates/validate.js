@@ -37,8 +37,8 @@ cards.forEach((card, index) => {
   if (card.title && String(card.title).replace(/<br\s*\/?>/gi, '').length > 36) {
     errors.push(`${label}: title exceeds 36 characters`);
   }
-  if (card.body && String(card.body).replace(/<br\s*\/?>/gi, '').length > 90) {
-    errors.push(`${label}: body exceeds 90 characters`);
+  if (card.body && String(card.body).replace(/<br\s*\/?>/gi, '').length > 110) {
+    errors.push(`${label}: body exceeds 110 characters`);
   }
   if (card.type === 'cover' && card.hook && String(card.hook).replace(/<br\s*\/?>/gi, '').length > 20) {
     errors.push(`${label}: cover hook exceeds 20 characters`);
