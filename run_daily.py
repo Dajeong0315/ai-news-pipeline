@@ -2,6 +2,7 @@
 
 기본 자동 모드(auto)는 수집·정제·카테고리별 자동 선정·카드 생성 QA·인스타그램
 업로드를 한 번에 실행한다. collect/publish는 문제 진단과 수동 재처리용으로 남긴다.
+각 실행은 pipeline_events에 run 시작/종료가 기록돼 대시보드에 나타난다.
 """
 
 import sys
@@ -10,7 +11,9 @@ import auto_select
 import check_usage
 import clean_news
 import collect_news
+import events
 import generate_cardset
+import keyword_stats
 import publish_instagram
 
 
@@ -30,19 +33,25 @@ def run_auto_phase() -> None:
     """사람 승인 없이 선정부터 QA·업로드까지 한 번에 실행한다."""
     run_collect_phase()
     run_publish_phase()
+    keyword_stats.snapshot()
+
+
+PHASES = {"collect": run_collect_phase, "publish": run_publish_phase, "auto": run_auto_phase}
 
 
 def main() -> None:
     phase = sys.argv[1] if len(sys.argv) > 1 else "auto"
-    if phase == "collect":
-        run_collect_phase()
-    elif phase == "publish":
-        run_publish_phase()
-    elif phase == "auto":
-        run_auto_phase()
-    else:
+    if phase not in PHASES:
         print("사용법: python run_daily.py [collect|publish|auto]")
         sys.exit(1)
+
+    events.record("run", "started", message=f"{phase} 모드 시작", detail={"mode": phase, "trigger": events.TRIGGER})
+    try:
+        PHASES[phase]()
+    except Exception as e:
+        events.record("run", "failed", message=f"{type(e).__name__}: {e}")
+        raise
+    events.record("run", "success", message=f"{phase} 모드 완료")
 
 
 if __name__ == "__main__":

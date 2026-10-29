@@ -19,9 +19,11 @@ from PIL import Image, ImageStat
 from rapidfuzz import fuzz
 
 import config
+import events
 from db import get_client
 from fetch_article import fetch_article_text
 from generate_pose import generate_new_pose
+from instagram_client import upload_to_storage
 from llm_client import call_text_model
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -433,8 +435,16 @@ def render_cardset(content_path: Path, out_dir: Path) -> bool:
     return True
 
 
+def _record_retry(item: dict, attempt: int, reason: str) -> None:
+    events.record(
+        "cardset", "retry", category=item["category"], news_item_id=item["id"],
+        message=f"({attempt}/{MAX_ATTEMPTS}) {reason}",
+    )
+
+
 def process_item(item: dict) -> dict | None:
     log.info("[%s] 기사 원문 수집 중: %s", item["category"], item["url"])
+    events.record("cardset", "started", category=item["category"], news_item_id=item["id"], message=item["title"])
     article_text = fetch_article_text(item["url"])
     log.info("[%s] 원문 %d자 확보", item["category"], len(article_text))
 
@@ -447,6 +457,7 @@ def process_item(item: dict) -> dict | None:
             content = data
         except Exception as e:
             log.warning("[%s] LLM 응답 생성/검사 실패(%d/%d): %s", item["category"], attempt, MAX_ATTEMPTS, e)
+            _record_retry(item, attempt, f"LLM 응답 생성/검사 실패: {e}")
             continue
 
         out_dir = Path("output") / date.today().isoformat() / item["category"]
@@ -458,26 +469,34 @@ def process_item(item: dict) -> dict | None:
             check_content_quality(content, caption or "", article_text)
         except ValueError as e:
             log.warning("[%s] 콘텐츠 QA 실패(%d/%d): %s", item["category"], attempt, MAX_ATTEMPTS, e)
+            _record_retry(item, attempt, f"콘텐츠 QA 실패: {e}")
             continue
 
         ok, message = validate_content(content_path)
         if not ok:
             log.warning("[%s] 검증 실패(%d/%d): %s", item["category"], attempt, MAX_ATTEMPTS, message)
+            _record_retry(item, attempt, f"검증 실패: {message.strip()[:300]}")
             continue
 
         log.info("[%s] 검증 통과 (%d/%d)", item["category"], attempt, MAX_ATTEMPTS)
         if not render_cardset(content_path, out_dir):
             log.warning("[%s] 렌더 실패(오버플로 등), 콘텐츠 재생성으로 재시도(%d/%d)", item["category"], attempt, MAX_ATTEMPTS)
+            _record_retry(item, attempt, "렌더 실패(오버플로 등)")
             continue
         try:
             check_rendered_images(out_dir, len(content["cards"]))
         except ValueError as e:
             log.warning("[%s] 렌더 QA 실패(%d/%d): %s", item["category"], attempt, MAX_ATTEMPTS, e)
+            _record_retry(item, attempt, f"렌더 QA 실패: {e}")
             continue
         (out_dir / "caption.txt").write_text(caption or "", encoding="utf-8")
         return {"content_path": content_path, "out_dir": out_dir, "caption": caption}
 
     log.error("[%s] QA를 %d회 통과하지 못해 업로드하지 않음", item["category"], MAX_ATTEMPTS)
+    events.record(
+        "cardset", "failed", category=item["category"], news_item_id=item["id"],
+        message=f"QA {MAX_ATTEMPTS}회 미통과로 게시하지 않음 (원문 {len(article_text)}자)",
+    )
     return None
 
 
@@ -546,8 +565,8 @@ def main():
         if not result:
             continue
 
-        png_count = len(list(result["out_dir"].glob("[0-9][0-9].png")))
-        client.table("cards").insert(
+        pngs = sorted(result["out_dir"].glob("[0-9][0-9].png"))
+        card = client.table("cards").insert(
             {
                 "news_item_id": item["id"],
                 "category": item["category"],
@@ -556,9 +575,20 @@ def main():
                 "publish_order": publish_order,
                 "published": False,
             }
-        ).execute()
+        ).execute().data[0]
         publish_order += 1
-        log.info("[%s] 카드세트 생성 완료: %s (%d장)", item["category"], result["out_dir"], png_count)
+        log.info("[%s] 카드세트 생성 완료: %s (%d장)", item["category"], result["out_dir"], len(pngs))
+
+        # 대시보드 [카드] 미리보기용. 게시 단계도 같은 경로에 upsert하므로 중복 업로드는 무해하다.
+        try:
+            for png in pngs:
+                upload_to_storage(str(png))
+        except Exception as e:
+            log.warning("[%s] 미리보기 이미지 업로드 실패(게시에는 영향 없음): %s", item["category"], e)
+        events.record(
+            "cardset", "success", category=item["category"], count=len(pngs), news_item_id=item["id"],
+            card_id=card["id"], message=f"카드 {len(pngs)}장 렌더링 완료",
+        )
 
 
 if __name__ == "__main__":

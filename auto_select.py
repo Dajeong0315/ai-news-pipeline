@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from rapidfuzz import fuzz
 
 import config
+import events
 from db import get_client
 from llm_client import call_text_model
 
@@ -72,6 +73,7 @@ def select_category(category: str) -> dict | None:
     candidates = [item for item in fetch_candidates(category) if not is_recent_duplicate(item, history)]
     if not candidates:
         log.info("[%s] 새롭고 적합한 후보 없음", category)
+        events.record("select", "skipped", category=category, count=0, message="새롭고 적합한 후보 없음")
         return None
     try:
         selected_id = choose_with_editorial_model(category, candidates)
@@ -81,6 +83,10 @@ def select_category(category: str) -> dict | None:
     selected = next((item for item in candidates if item["id"] == selected_id), candidates[0])
     get_client().table("news_items").update({"status": "approved"}).eq("id", selected["id"]).execute()
     log.info("[%s] 자동 선정: %s", category, selected["title"])
+    events.record(
+        "select", "success", category=category, count=len(candidates), news_item_id=selected["id"],
+        message=selected["title"], detail={"pool": len(candidates), "editorial_pick": selected_id is not None},
+    )
     return selected
 
 

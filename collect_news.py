@@ -20,6 +20,7 @@ def strip_html(raw: str) -> str:
     return _TAG_RE.sub("", raw or "").strip()
 
 import config
+import events
 from db import get_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -116,10 +117,15 @@ def save_rows(rows: list[dict]) -> int:
 
 def main():
     log.info("뉴스 수집 시작")
+    events.record("collect", "started", message="Google News RSS 수집 시작")
     rows = collect_all()
     log.info("총 수집 %d건 (중복 URL 포함), Supabase 저장 시도", len(rows))
     saved = save_rows(rows)
     log.info("신규 저장 %d건 완료", saved)
+    events.record(
+        "collect", "success" if rows else "failed", count=len(rows),
+        message=f"수집 {len(rows):,}건 (신규 저장 {saved:,}건)", detail={"fetched": len(rows), "saved": saved},
+    )
 
 
 if __name__ == "__main__":

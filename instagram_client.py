@@ -35,13 +35,20 @@ def _raise_with_detail(resp: httpx.Response) -> None:
     raise RuntimeError(f"Instagram Graph API {resp.status_code}: {message}")
 
 
+def _auth_header() -> dict:
+    """GET 요청에 access_token을 쿼리로 넣으면 URL째 로그에 남으므로 헤더로 보낸다.
+    (POST는 토큰이 폼 본문에 들어가 URL에 남지 않아 기존 방식을 유지한다.)"""
+    return {"Authorization": f"Bearer {config.INSTAGRAM_ACCESS_TOKEN}"}
+
+
 def verify_token() -> None:
     """실제 카드 업로드를 시작하기 전에 토큰이 살아있는지 가볍게 확인한다.
     토큰이 만료된 채로 카테고리별로 반복 시도하면 같은 원인의 에러가
     카테고리 수만큼 중복으로 텔레그램에 쌓여 원인 파악만 더 헷갈리게 만든다."""
     resp = httpx.get(
         f"{GRAPH_BASE}/{config.INSTAGRAM_BUSINESS_ACCOUNT_ID}",
-        params={"fields": "id", "access_token": config.INSTAGRAM_ACCESS_TOKEN},
+        params={"fields": "id"},
+        headers=_auth_header(),
         timeout=15,
     )
     _raise_with_detail(resp)
@@ -113,7 +120,8 @@ def wait_until_ready(creation_id: str, max_wait_sec: int = 30, poll_interval_sec
     while waited < max_wait_sec:
         resp = httpx.get(
             f"{GRAPH_BASE}/{creation_id}",
-            params={"fields": "status_code", "access_token": config.INSTAGRAM_ACCESS_TOKEN},
+            params={"fields": "status_code"},
+            headers=_auth_header(),
             timeout=15,
         )
         _raise_with_detail(resp)

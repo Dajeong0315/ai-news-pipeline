@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from rapidfuzz import fuzz
 
 import config
+import events
 from db import get_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -132,6 +133,10 @@ def main():
 
     grouped, promoted = apply_updates(all_clusters)
     log.info("dedup_group_id 부여 %d건, status=filtered 승격 %d건", grouped, promoted)
+    events.record(
+        "clean", "success", count=promoted, message=f"정제 {promoted:,}건 (대상 {len(items):,}건)",
+        detail={"targets": len(items), "passed_filters": len(candidates), "groups": promoted},
+    )
 
 
 if __name__ == "__main__":
