@@ -2,6 +2,150 @@
 
 마지막 갱신: 2026-10-30
 
+## 2026-10-30 채널 구조 도입 + 두 번째 채널(→ 2030 청년 생활정보) (코드 완료, DB 마이그레이션·실행 검증 전)
+
+### 대시보드: 채널 전환(경제·정보담당) + 갤럭시 폰 화면 (같은 날, Aside 세션, 배포 전)
+
+- `webhook/api/index.py`: `CHANNELS` 설정(이름·카테고리·daily_posts, channel.json과 같이 고칠 것)과 `channel_ctx()` 추가.
+  `/api/dash/today|topics|keywords|calendar|cards`가 `?channel=economy|youth`(기본 economy)를 받는다. 새 `/api/dash/overview`는 두 채널의 오늘 요약
+  (선정·카드·게시/목표·실패·마지막 실행). 정보담당은 목표가 하루 2건, 이월 쿼터 대신 "하루 게시 목표" 패널. 캘린더 실패 이벤트도 채널로 거름.
+- 화면: 상단 채널 버튼(선택은 localStorage, `?ch=youth`로 바로 열기), 오늘 탭 맨 위 두 채널 요약 카드(누르면 전환, 30초 캐시),
+  정보담당은 고양이 이미지 숨김, 카테고리 색은 채널 목록에서 자동(경제 색 그대로).
+- 모바일: 440px 이하(갤럭시 S 360~412px)·360px 이하(폴드 커버) 구간 추가, 글자 자동 확대 방지, 가로 넘침 방지, 100dvh,
+  캘린더는 가로 스크롤 + 분야 이름 고정 + 오늘 쪽으로 자동 스크롤, 발행 균형 줄바꿈, 미리보기 좌우 스와이프.
+- 가짜 데이터로 360·384px(갤럭시 S)·1280px에서 렌더 확인(가로 넘침 없음). 파이썬 실행·실서버 확인은 아직:
+  `python -c "import ast;ast.parse(open('webhook/api/index.py',encoding='utf-8').read())"` 후 커밋·push하면 Vercel 자동 배포.
+
+### 주간 템플릿 리서치 루틴 (같은 날, Aside 루틴 "주간 카드뉴스 템플릿 리서치·추가")
+
+- 매주 일요일 14:00 KST(첫 실행 2026-11-01). 인스타에서 반응 좋은 카드뉴스 게시물·릴스를 보고 새 템플릿 1개 이상 제작(또는 기존 수정),
+  브라우저 렌더로 QA(errors 0) 통과 시 다음 주 순환에 추가(청년: channels/youth/channel.json, 경제: config.py CARD_TEMPLATES 기본값).
+- 절차·기준: `card_templates/research/README.md`, 기록: `card_templates/research/log.md`·`<날짜>.md`, 미리보기: `card_templates/previews/`.
+- 도구: `card_templates/research/preview_in_browser.js`(파이썬·노드 없이 템플릿 렌더 + render.js와 같은 QA). 2026-10-30 청년 템플릿 9종을
+  정보담당 샘플 덱으로 렌더해 보니 새 렌더 QA(strict) 오탐 0건.
+- 루틴은 게시·파이프라인 실행·커밋·QA 코드 수정을 하지 않는다. 템플릿을 빼려면 순환 문자열에서 이름만 지우면 된다.
+
+### QA 기준 재점검·보완 (같은 날, Aside 세션에서 반영, 실행 검증 전)
+
+- 전체 기준은 `QA_기준.md`에 정리. 바뀐 점:
+  - `slide_writer.py`: 날짜(○월 ○일)·한 자리 숫자 붙은 금액/비율/나이/배수 원문 대조(전체, 기존엔 두 자리 이상 숫자만 봄),
+    채널 금지어 `banned_phrases`, 카드 이모지 금지 `no_emoji_on_cards`, 확정 전 제도 "예정" 표시 `plan_notice_words`,
+    마감 지난 모집 건너뛰기 `check_deadline`(SkipArticle, 재시도 없음), 최종 캡션 2200자 한도(전체), `write_deck(hint=)`로 렌더 실패 이유 전달.
+  - `card_templates/render.js`: 장식 속 글자 넘침·overflow 잘림(job.qa.strict면 실패, 아니면 경고), 깨진 이미지 실패, 웹폰트 실패 경고.
+  - `generate_cardset.py`: job.qa.strict = 채널 `render_strict`, 렌더 경고 로그, 렌더 실패 이유를 다음 작성 힌트로, 릴스 파일 크기 검사·깨진 파일 삭제.
+  - `run_daily.py`: `cards` 모드 추가(게시 없이 수집·선정·카드 생성까지).
+  - youth `channel.json`: 위 옵션 켬. 경제는 옵션 없음 → 프롬프트 동일, 새 공통 검사(날짜·한 자리 수치 대조, 캡션 2200자, 렌더 경고)만 적용.
+- 묘한경제 계정으로 youth 테스트(운영자 결정): `channels/youth/.env`에 경제 계정 인스타·Cloudflare 값 임시 복사. 새 계정 만들면 교체.
+  주의: Cloudflare 무료 한도를 경제와 나눠 씀. run_youth.bat(auto)은 바로 게시하므로 테스트는 `run_daily.py cards`로.
+- 할 일: 파이썬 실행 검증(이 세션은 파이썬 실행 불가), render_strict 기준의 오탐 여부를 첫 렌더에서 확인.
+
+### 컨셉·이름 확정: "정보담당" (같은 날 오후, Aside 브라우저 세션에서 반영)
+
+- 컨셉: 친구 단톡방에서 지원금·채용·자격증·대외활동 소식을 물어다 주는 "정보담당" 친구. 아래 "선배 반말"(아직도 신청 안 했어? 너만 안 함)은 폐기.
+  근거: 인스타 조사에서 경쟁 계정 대부분이 "놓치면 손해" 공포 톤. 참고 계정 @mmintj_3은 "@@아 아직도 컴활 못 땄어?"(친구 태그형 제목 + 카톡 대화 도입 + 체크 목록)가 반응 1등, 자격증 글이 지원금 글보다 반응 좋음.
+- `channels/youth/channel.json`: name, _comment, writer_intro, tone_rule, editor_tone, caption_spec(첫 줄 단톡 한마디, 마지막 줄 친구 태그·공유 부탁), disclaimer 교체.
+  writer_rules에 "@@아" 친구 태그형 표지 제목 규칙 추가(기사 2~3개 중 1개 정도), hook을 단톡방 대화로 변경, props 예시(label "너 해당될 듯", closing_buttons "친구한테 보내기") 변경.
+  categories.youth_job → "채용/취업·자격증", selector_extra에 자격증 시험·취업 준비 정보 포함 문장 추가.
+- `channels/youth/keywords.json`: youth_job에 "자격증 시험", "국가기술자격", "한국사능력검정시험" 추가(RSS 실측 전).
+- `card_templates/brands/youth.json`: name·wordmark "정보담당", series "오늘 챙길 거", emoji 비움(템플릿은 `brand.emoji || ""`로 처리). handle은 계정 만든 뒤.
+- `slide_writer.py`: 반말 채널(youth)에만 쓰이는 편집 프롬프트 치환 문구와 오류 메시지의 "선배" 표현을 정보담당으로 변경. 경제 채널 경로는 변경 없음.
+- 남은 것: 템플릿별 문구 규칙(chat=단톡 대화, airdrop=친구한테 공유, folder=챙길 것 목록, edit=메모, desktop=알림 창)은 아직 미구현. 실행 검증·커밋 전.
+
+### 주제 변경: IT·테크 → 2030 청년 생활정보 (같은 날 운영자)
+
+- 채널 키 `tech` → `youth`(DB에 tech 행은 아직 없음). `channels/youth/`, `card_templates/brands/youth.json`(가칭 "청년알림", 핸들 비움), `run_youth.bat`(`logs/youth.log`).
+- 카테고리: `youth_support` 지원금/제도, `youth_edu` 교육/자기계발, `youth_job` 채용/취업. 검색어 각 15개.
+- 형식: 카드는 1~4장(`slide_range`)으로 핵심만, 자세한 설명은 캡션(`caption_spec`: 요약 → 📌대상 → 💰지원 내용 → 🗓기간 → ✅신청 방법 → ⚠️주의, 기사에 있는 항목만, 900자).
+  캡션에 사실이 많이 들어가므로 `check_caption`이 캡션의 숫자(원문 대조)·금지 표현·한자·길이를 슬라이드와 같은 기준으로 본다.
+- 작성 규칙: 대상·금액·기간·방법은 기사에 있는 것만, 기간 추측·재촉 금지, 시행 전 제도는 "예정" 명시. 선정 프롬프트에 `selector_extra`(신청·준비할 수 있는 구체 정보 우선).
+- 말투(운영자): 정리 잘하는 선배의 반말, "아직도 신청 안 했어? 너만 안 함" 같은 장난스러운 재촉 + 정확한 정보.
+  `speech: banmal`이면 작성 규칙 8번·편집 3번을 채널 문구로 바꾸고, 문장 검사는 해요체 대신 기사체·합쇼체 끝맺음만 막는다.
+  재촉은 말투로만("다들 받았어" 같은 근거 없는 사실 주장 금지), 기간 추측("곧 마감") 금지. 고지 문구도 반말.
+- 댓글 → DM 자료는 노션 페이지로 하기로 함(운영자). 계정 이름은 "청년알림은 흔하고 받을건받자·신청각은 장난스럽다" → 재검토 중.
+- 대외활동·공모전 추가(운영자). 하루 3건 유지를 위해 카테고리를 지원금/제도(교육 지원 포함)·채용/취업·대외활동/공모전으로 재구성.
+  RSS 실측(24시간): 공모전 검색 결과 다수가 수상·성료 소식 → 0건 검색어 5개를 모집 위주로 교체, 채널 `exclude_title_words`로
+  제목에 "수상·성료·시상·발대식" 등이 있으면 자동 선정 후보에서 뺌(`auto_select.py`). 선정 프롬프트에 "모집 정보가 있으면 기업 주최여도 정보로 본다".
+- 게시 수·릴스(운영자 결정): 하루 1~2개, 게시물마다 캐러셀 + 릴스, 릴스 소리는 저작권 무료 음원 폴더.
+  - `daily_posts: 2` → `auto_select.select_daily`가 세 카테고리 후보를 합쳐 모델에게 1~2건을 고르게 함(좋은 게 하나뿐이면 1건,
+    모델 실패 시 최신 1건). 같은 카테고리 2건이 겹치지 않게 출력 폴더는 `카테고리-기사ID`, 템플릿은 그날 몇 번째 게시물인지로 순환.
+    경제는 `daily_posts` 없음 → 카테고리별 1건·템플릿 순환 그대로(이전 커밋과 같은 결과 확인).
+  - `reel.py`: 카드 PNG → 1080×1920 30fps H.264 영상(흐린 카드 배경 위 카드, 장당 3.5초 페이드, 1장이면 6초),
+    `channels/youth/music/`의 음원 하나를 무작위로 잘라 넣음(없으면 무음). 실측: 4장 12.5초·1장 6초 정상.
+  - `generate_cardset`가 렌더 후 reel.mp4 생성(실패해도 캐러셀은 진행), `publish_instagram.publish_reel`이 캐러셀 게시 뒤
+    `instagram_client.upload_and_publish_reel`(REELS, share_to_feed=false: 같은 카드가 피드에 이미 있음)로 올림. 실패는 텔레그램 알림만, 재시도 안 함.
+  - 가짜 DB·모델·인스타로 선정(2건/1건/없는 id/모델 실패)·릴스 분기 확인. 실제 릴스 게시는 계정·토큰 생긴 뒤 확인 필요.
+  - 음원 파일은 공개 저장소에 안 올림(.gitignore `channels/*/music/*`).
+- 16:10 전 DB 마이그레이션 적용 확인(운영자 실행, 11:40): channel 칸 생김, 기존 행 모두 economy, (channel,url) upsert 정상.
+- 경제 채널: 작성·편집 프롬프트와 선정 프롬프트가 이전 커밋과 글자 하나까지 같음(확인). 장수 3~7, 캡션 검사 없음 그대로.
+- 확인: 1장 덱이 템플릿 9종 모두 렌더됨, 1장 덱 검사 통과, 캡션의 원문에 없는 숫자·900자 초과 거부.
+- 아래 IT·테크 시절 기록 중 템플릿·props·채널 구조는 그대로 유효(채널 이름과 주제만 바뀜).
+
+### 처음 기록(IT·테크로 시작)
+
+운영자 요청: 다른 주제로 계정을 하나 더 운영. 주제는 IT·테크, 한 저장소에서 채널로 나누고,
+Cloudflare는 계정을 따로 만들어 경제 무료 한도와 섞지 않는다. 캐릭터는 미정이라 고양이 없는(`:plain`) 템플릿만.
+
+### 구조
+
+- 실행 전 환경변수 `CHANNEL`로 채널을 고른다(기본 `economy`). 테크는 `run_youth.bat`(로그 `logs/youth.log`).
+  수동 실행: PowerShell에서 `$env:CHANNEL='youth'; .\venv\Scripts\python.exe run_daily.py auto`
+- `channels/<채널>/channel.json`: 이름, 카테고리(키는 채널끼리 겹치지 않게), 브랜드 파일, 템플릿 순환,
+  선정·작성 프롬프트의 채널별 부분(소개 문장·추가 규칙·해시태그 예시), 캡션 고지 문구
+- `channels/<채널>/keywords.json`: 검색어(루트 `keywords.json`은 `channels/economy/`로 이동)
+- 계정 값(Cloudflare 계정·토큰, 인스타그램 토큰·계정 ID): economy는 루트 `.env`, 다른 채널은
+  `channels/<채널>/.env`에서만 읽는다. 루트 값을 물려받지 않게 비운 뒤 채우므로, 테크 `.env`가 없으면
+  LLM 호출은 실패하고 게시는 건너뛴다(경제 계정·한도를 쓰는 일 없음).
+- DB는 공용. `news_items.channel`(수집 중복 판단을 채널별로), `pipeline_events.channel`.
+  나머지 조회(정제·선정·카드 생성·게시·사용량 경고·키워드 집계)는 그 채널 카테고리로 거른다.
+  특히 게시는 자기 채널 카테고리 카드만 올린다(테크 실행이 경제 카드를 테크 계정에 올리지 않게).
+- 텔레그램 봇은 같이 쓰고, 경제가 아닌 채널 알림 앞에 `[채널 이름]`을 붙인다.
+- 대시보드(webhook)는 아직 경제만 보여준다(`channel=economy`, 경제 카테고리로 거름).
+
+### 확인한 것 (오프라인)
+
+- 경제 채널: 카테고리·템플릿 순환·검색어 수 그대로, `slide_writer.SYSTEM_PROMPT`·고지 문구가 이전 커밋과 글자 하나까지 같음.
+- 테크 채널: 카테고리 3개(AI / 기기·서비스 / 산업·정책) × 검색어 15개, 템플릿 6종 `:plain`,
+  프롬프트에 테크 규칙 16~18번 추가, 고지 문구 없음, 계정 값 4개 모두 비어 있음(경제 값 상속 안 됨).
+- `webhook/api/index.py` 문법 검사 통과.
+
+### 화면 UI 템플릿 3종 추가 (같은 날, 운영자 레퍼런스 11장 기반)
+
+- `card_templates/chat`(메신저 대화방), `notify`(잠금화면: 그라데이션 배경화면 + 시계 + 알림 배너. 처음엔 흑백 사진 배경이었으나 운영자가 별로라 해서 사진을 뺌), `desktop`(컴퓨터 화면 UI 콜라주,
+  마지막 장 "게시물 저장" 대화상자). 특정 회사 로고·아이콘은 쓰지 않음. 미리보기 `card_templates/previews/{chat,notify,desktop}.jpg`
+  (샘플 덱·가칭 브랜드 "IT알림", 배경은 기존 샘플 사진 재사용 — Cloudflare 호출 없음).
+- 표지 선택 필드 `hook`(말풍선·알림·목록으로 얹는 짧은 대화 2~3줄, 각 24자 이내). 테크 채널 작성 규칙 19번으로 요청하고,
+  `check_deck`이 길이·개수를 보고 원문에 없는 숫자·금지 표현·한자도 다른 필드와 똑같이 거른다. 경제 프롬프트에는 없음.
+- 2차 레퍼런스 5장으로 `soft`(파스텔 + 누끼 + 테두리 박스. 배경 제거 도구 없이 흰 배경 사진을 곱하기 합성 + 가장자리 흐림),
+  `archive`(사진 + 스토리 답장 카드), `picky`(붓 손글씨 제목, 핵심 단어 보라색), `magazine`(vol.번호·노란 태그) 추가.
+  운영자 검토 후 `archive`·`picky`는 삭제(soft·magazine만 유지).
+- 3차 레퍼런스로 `folder`(폴더 + 사진 세 장 + 종이 속지), `airdrop`(파일 공유 창 틀 + 두 색 제목 + 이모지·독) 추가.
+  airdrop 이모지는 렌더 환경의 컬러 이모지 글꼴을 쓴다(Windows는 있음, 리눅스 CI로 옮기면 글꼴 설치 필요).
+- 4차: 운영자가 "folder·airdrop 형식이 이상하다, 톤앤매너 맞춰라" + 피드 무드(Everyday Edit / iOS Core Collection) 공유.
+  톤 = 따뜻한 필름톤 사진(sepia 약하게) · 크림/베이지 · 얇은 Pretendard + 고운바탕 명조 혼합 제목 · 작은 UI 소품 · 이모지·원색·굵은 글씨 없음.
+  새 `edit` 템플릿을 이 톤으로 만들고 folder(크림 바탕·뮤트 폴더·크림 종이)와 airdrop(얇은 창·연분홍 명조·손그림 반짝이·뮤트 독)을 같은 톤으로 다시 씀.
+  크기 정리: 속지 내용을 남는 영역의 세로 가운데로, 글자·소품 한 단계씩 키움. folder 속지 종이는 폴더 앞면이 아래를 덮게(꽂힌 모양),
+  제목 명조 줄은 고운바탕 700(400은 얇은 산스와 구분이 안 됨).
+- 5차: 운영자 "airdrop 파일 공유 블록에 크기 맞춰야", "세부 내용은 컨셉에 맞춰 항상 바뀌어야".
+  airdrop 표지 창을 780px로 키우고 제목·부제를 창의 비침 영역 안(가로 680px)에 넣어 fitDeck이 그 폭에 맞춰 줄이게 함.
+  장식 문구를 덱의 `props`로 분리(창 제목·버튼·필기체·메모 제목·폴더 이름·라벨·질문). 테크 작성 규칙 20번으로 요청,
+  `clean_props`가 길이·숫자·금지 표현·한자·영문 필기체 조건을 보고 틀린 항목만 버림(덱 재생성 없음, 템플릿 기본값 사용).
+  두 가지 props 샘플로 edit·folder·airdrop 렌더 확인. 경제 채널은 props를 요청하지 않아 빈 값 → 기본값(경제 템플릿은 props 안 씀).
+- 테크 템플릿 순환: `edit, chat, soft, folder, desktop, airdrop, magazine, darkcenter:plain, blocktitle:plain`.
+  `notify`는 운영자가 배경(흑백 사진·그라데이션 모두) 별로라 해서 순환에서 뺌. 배경 사진 출처 결정 후 재검토.
+- 운영자가 핀터레스트 이미지 사용을 원했으나 저작권·약관 문제로 자동 수집하지 않기로 함. 대안: Pexels/Unsplash API(상업 이용 가능) — 운영자 결정 대기.
+- **10:50 KST 미리보기용 flux 호출 1회가 429** — 경제 계정 Cloudflare 무료 한도가 이미 소진된 상태로 보임. 16:00 경제 실행 전 확인 필요.
+
+### 남은 일
+
+1. **`sql/2026-10-30_channels.sql`을 Supabase SQL Editor에서 실행** — 실행 전에는 경제 수집도
+   실패한다(수집이 `channel` 칸을 넣으므로). 경제 정기 실행(16:00) 전에 필요.
+2. 웹훅(대시보드) 배포는 SQL 실행 뒤에(채널 칸으로 거르므로).
+3. 운영자: 새 Cloudflare 계정·API 토큰, 새 인스타그램 비즈니스 계정·토큰 → `channels/youth/.env`
+   (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ACCOUNT_ID`).
+   채널 이름·핸들은 `channels/youth/channel.json`·`card_templates/brands/youth.json`(지금은 가칭 "오늘의 테크", 핸들 비움).
+4. 테크 수집·정제만 먼저 돌려 검색어 품질 확인 → Cloudflare 토큰 생기면 카드 생성 → 게시는 운영자 확인 후.
+5. 테크 작업 스케줄러 등록은 운영자 승인 후(경제와 다른 시각으로).
+
 ## 2026-10-30 뉴스 수집량 축소 (운영자: "너무 많이 수집한다")
 
 ### 진단 (10/29 실행 기준)

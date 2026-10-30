@@ -1,0 +1,55 @@
+{
+ "slides": [
+  {
+   "kind": "cover",
+   "kicker": "교통비",
+   "title": "@@아 교통비\n30% 돌려받는 거 알아?",
+   "subtitle": "만 19~34세면 대상이야",
+   "hook": [
+    "야 이거 너 해당될 듯",
+    "헐 진짜? 조건 뭔데",
+    "한 달 15번 타면 돼"
+   ]
+  },
+  {
+   "kind": "point",
+   "kicker": "조건",
+   "title": "한 달에\n15번 이상 타면",
+   "body": "다음 달에 쓴 돈 일부를 돌려줘. 카드 등록은 직접 해야 돼."
+  },
+  {
+   "kind": "list",
+   "title": "챙길 거",
+   "items": [
+    "만 19~34세",
+    "월 15회 이상 이용",
+    "K-패스 카드 발급 후 등록"
+   ]
+  },
+  {
+   "kind": "closing",
+   "title": "출퇴근 같이 하는\n친구한테 보내줘",
+   "body": "신청 전에 공고에서 조건 다시 확인해."
+  }
+ ],
+ "props": {
+  "script": "commute money back",
+  "closing_script": "send it to a friend",
+  "window_title": "교통비 환급",
+  "buttons": [
+   "나중에",
+   "지금 볼게"
+  ],
+  "closing_buttons": [
+   "다음에",
+   "친구한테 보내기"
+  ],
+  "memo_title": "챙길 거",
+  "folders": [
+   "교통비",
+   "신청서_최종"
+  ],
+  "label": "너 해당될 듯",
+  "ask": "그래서 나도 돼?"
+ }
+}
