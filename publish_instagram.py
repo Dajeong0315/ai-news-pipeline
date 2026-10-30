@@ -34,6 +34,7 @@ def fetch_unpublished() -> list[dict]:
         client.table("cards")
         .select("id,category,final_title,image_path,publish_order")
         .eq("published", False)
+        .in_("category", list(config.CATEGORIES))
         .gte("created_at", today_start.isoformat())
         .order("publish_order")
         .execute()
@@ -96,6 +97,27 @@ def main():
             "publish", "success", category=item["category"], card_id=item["id"], count=len(pngs),
             message="인스타그램 게시 완료", detail={"media_id": media_id},
         )
+        publish_reel(item, out_dir / "reel.mp4", caption)
+
+
+def publish_reel(item: dict, video: Path, caption: str) -> None:
+    """캐러셀과 같은 카드로 만든 릴스를 이어서 올린다(채널 설정 reels). 실패해도 캐러셀은 이미 올라갔으므로
+    알림만 보내고, 다음 실행에서 다시 올리지 않는다(같은 내용이 늦게 두 번 올라가는 것 방지)."""
+    if not config.CHANNEL_CONFIG.get("reels"):
+        return
+    if not video.exists():
+        events.record("reel", "skipped", category=item["category"], card_id=item["id"], message="릴스 영상 없음")
+        return
+    try:
+        media_id = instagram_client.upload_and_publish_reel(str(video), caption)
+    except Exception as e:
+        log.error("[%s] 릴스 업로드 실패: %s", item["category"], e)
+        events.record("reel", "failed", category=item["category"], card_id=item["id"], message=str(e))
+        telegram_client.send_message(f"⚠️ 릴스 업로드 실패(캐러셀은 게시됨)\n{item['final_title']}\n{e}")
+        return
+    log.info("[%s] 릴스 업로드 완료 media_id=%s", item["category"], media_id)
+    events.record("reel", "success", category=item["category"], card_id=item["id"], message="릴스 게시 완료",
+                  detail={"media_id": media_id})
 
 
 if __name__ == "__main__":

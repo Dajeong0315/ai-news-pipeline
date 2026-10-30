@@ -1,0 +1,15 @@
+{
+  "_comment": "채널(인스타그램 계정) 하나의 주제 설정. 계정 토큰은 여기가 아니라 .env에 둔다(economy는 루트 .env, 다른 채널은 channels/<채널>/.env).",
+  "name": "묘한 경제",
+  "brand": "card_templates/brands/myohan.json",
+  "categories": {
+    "index_macro": "지수/거시",
+    "stock": "개별종목",
+    "policy_industry": "정책/산업"
+  },
+  "selector_role": "한국 경제 카드뉴스의 편집장",
+  "writer_intro": "너는 인스타그램 경제 카드뉴스 \"묘한 경제\"의 에디터다. 독자는 경제 기사를 잘 안 읽는 20~30대다.",
+  "writer_rules": [],
+  "hashtag_example": "경제",
+  "disclaimer": "※ 교육·정보 제공용이며 투자 권유가 아닙니다."
+}

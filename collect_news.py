@@ -30,7 +30,7 @@ GOOGLE_NEWS_RSS = "https://news.google.com/rss/search?q={query}&hl=ko&gl=KR&ceid
 REQUEST_DELAY_SEC = 1.0
 
 
-def load_keywords(path: str = "keywords.json") -> dict:
+def load_keywords(path=config.KEYWORDS_PATH) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     return {cat: kws for cat, kws in data.items() if cat in config.CATEGORIES}
@@ -64,6 +64,7 @@ def entry_to_row(entry, category: str, keyword: str) -> dict | None:
         "title": title,
         "url": link,
         "source": source,
+        "channel": config.CHANNEL,
         "category": category,
         "keyword": keyword,
         "summary": summary,
@@ -110,14 +111,15 @@ def save_rows(rows: list[dict]) -> int:
         return 0
     client = get_client()
     saved = 0
-    # url UNIQUE 제약이 있으므로 중복은 무시하고, 배치로 upsert
+    # (channel, url) UNIQUE 제약이 있으므로 중복은 무시하고, 배치로 upsert.
+    # 채널별로 따로 두는 건 같은 기사를 경제·테크가 각자 쓸 수 있게 하려는 것(2026-10-30).
     batch_size = 200
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
         try:
             resp = (
                 client.table("news_items")
-                .upsert(batch, on_conflict="url", ignore_duplicates=True)
+                .upsert(batch, on_conflict="channel,url", ignore_duplicates=True)
                 .execute()
             )
             saved += len(resp.data or [])

@@ -12,6 +12,8 @@ def _url(method: str) -> str:
 
 
 def send_message(text: str, reply_markup: dict | None = None, chat_id: str | None = None) -> dict:
+    if config.CHANNEL != config.DEFAULT_CHANNEL:  # 봇 하나를 채널끼리 같이 쓰므로 어느 계정 알림인지 붙인다
+        text = f"[{config.CHANNEL_NAME}] {text}"
     payload = {
         "chat_id": chat_id or config.TELEGRAM_CHAT_ID,
         "text": text,

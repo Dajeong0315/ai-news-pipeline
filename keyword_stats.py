@@ -16,6 +16,7 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
+import config
 import events
 import telegram_client
 from db import get_client
@@ -33,7 +34,7 @@ def fetch_all_items(since: str | None = None) -> list[dict]:
     rows: list[dict] = []
     offset = 0
     while True:
-        query = client.table("news_items").select("keyword,category,status")
+        query = client.table("news_items").select("keyword,category,status").in_("category", list(config.CATEGORIES))
         if since:
             query = query.gte("collected_at", since)
         batch = query.order("id").range(offset, offset + PAGE_SIZE - 1).execute().data or []
@@ -64,7 +65,7 @@ def snapshot(days: int = SNAPSHOT_DAYS) -> None:
     keywords.json에 있지만 기간 내 한 건도 수집되지 않은 검색어도 0건으로 포함한다."""
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     stats = aggregate(fetch_all_items(since))
-    with open("keywords.json", "r", encoding="utf-8") as f:
+    with open(config.KEYWORDS_PATH, "r", encoding="utf-8") as f:
         configured = {cat: kws for cat, kws in json.load(f).items() if not cat.startswith("_")}
     for category, keywords in configured.items():
         for kw in keywords:

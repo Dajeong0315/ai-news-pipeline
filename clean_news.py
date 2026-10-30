@@ -47,6 +47,7 @@ def fetch_collected() -> list[dict]:
             client.table("news_items")
             .select("id,title,summary,category,published_at,collected_at")
             .eq("status", "collected")
+            .in_("category", list(config.CATEGORIES))
             .gte("collected_at", since)
             .order("id")
             .range(offset, offset + PAGE_SIZE - 1)

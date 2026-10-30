@@ -31,7 +31,7 @@ def today_start_utc_iso() -> str:
 def main():
     client = get_client()
     start = today_start_utc_iso()
-    card_count = client.table("cards").select("id", count="exact").gte("created_at", start).execute().count or 0
+    card_count = client.table("cards").select("id", count="exact").in_("category", list(config.CATEGORIES)).gte("created_at", start).execute().count or 0
 
     log.info("오늘 생성된 카드세트: %d건 (안전선 %d)", card_count, config.SAFE_DAILY_CLOUDFLARE_CALLS)
 

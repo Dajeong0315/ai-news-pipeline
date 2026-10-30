@@ -1,11 +1,29 @@
+import json
 import logging
 import os
 import sys
 import traceback
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# 채널 = 인스타그램 계정 하나(2026-10-30 IT·테크 채널 추가). 실행 전 환경변수 CHANNEL로 고른다.
+# 주제 설정은 channels/<채널>/channel.json·keywords.json, 계정 값은 economy만 루트 .env를 쓰고
+# 다른 채널은 channels/<채널>/.env만 쓴다. 루트 값을 물려받으면 경제 계정에 게시하거나
+# Cloudflare 무료 한도를 나눠 쓰게 되므로, 비워둔 채 그 채널 .env에서만 채운다.
+DEFAULT_CHANNEL = "economy"
+CHANNEL = os.environ.get("CHANNEL", DEFAULT_CHANNEL)
+CHANNEL_DIR = Path(__file__).resolve().parent / "channels" / CHANNEL
+ACCOUNT_KEYS = ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "INSTAGRAM_ACCESS_TOKEN", "INSTAGRAM_BUSINESS_ACCOUNT_ID")
+if CHANNEL != DEFAULT_CHANNEL:
+    os.environ.update({key: "" for key in ACCOUNT_KEYS})
+    load_dotenv(CHANNEL_DIR / ".env", override=True)
+CHANNEL_CONFIG = json.loads((CHANNEL_DIR / "channel.json").read_text(encoding="utf-8"))
+CHANNEL_NAME = CHANNEL_CONFIG["name"]
+KEYWORDS_PATH = CHANNEL_DIR / "keywords.json"
+BRAND_PATH = Path(__file__).resolve().parent / CHANNEL_CONFIG["brand"]
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -43,21 +61,19 @@ RECENT_TOPIC_LOOKBACK = int(os.environ.get("RECENT_TOPIC_LOOKBACK", 30))
 QA_MAX_ATTEMPTS = int(os.environ.get("QA_MAX_ATTEMPTS", 3))
 QA_MIN_ARTICLE_CHARS = int(os.environ.get("QA_MIN_ARTICLE_CHARS", 400))
 
-CATEGORIES = ("index_macro", "stock", "policy_industry")
+# 카테고리 키는 채널끼리 겹치지 않게 짓는다(cards·news_items를 카테고리로 채널 구분).
+CATEGORY_LABELS = CHANNEL_CONFIG["categories"]
+CATEGORIES = tuple(CATEGORY_LABELS)
 # 카드 디자인 순환 대상(card_templates/ 폴더 이름, 뒤에 ":plain"이면 고양이 없는 버전).
 # 기본은 6종 × 고양이 유무 12가지를 고양이 있음/없음이 번갈아 나오게 배치. 빼고 싶은 건 환경변수에서 지운다.
 CARD_TEMPLATES = tuple(
     t.strip() for t in os.environ.get(
         "CARD_TEMPLATES",
-        "gallery,moody:plain,sticker,darkcenter:plain,blocktitle,cutout:plain,"
+        CHANNEL_CONFIG.get("card_templates")
+        or "gallery,moody:plain,sticker,darkcenter:plain,blocktitle,cutout:plain,"
         "gallery:plain,moody,sticker:plain,darkcenter,blocktitle:plain,cutout",
     ).split(",") if t.strip()
 )
-CATEGORY_LABELS = {
-    "index_macro": "지수/거시",
-    "stock": "개별종목",
-    "policy_industry": "정책/산업",
-}
 
 # 레포가 public이고 GitHub Actions 로그도 공개되므로, 어떤 경로로 찍히든
 # 비밀값이 로그·텔레그램·pipeline_events에 남지 않도록 여기서 일괄 가린다.

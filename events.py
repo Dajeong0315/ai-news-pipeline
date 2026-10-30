@@ -37,6 +37,7 @@ def record(
 ) -> None:
     row = {
         "run_id": RUN_ID,
+        "channel": config.CHANNEL,
         "stage": stage,
         "status": status,
         "category": category,

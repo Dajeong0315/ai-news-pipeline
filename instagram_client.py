@@ -54,7 +54,7 @@ def verify_token() -> None:
     _raise_with_detail(resp)
 
 
-def upload_to_storage(local_path: str) -> str:
+def upload_to_storage(local_path: str, content_type: str = "image/png") -> str:
     client = get_client()
     bucket = client.storage.from_(config.SUPABASE_STORAGE_BUCKET)
     # 카드 파일명이 01.png처럼 카테고리/날짜 사이에 겹칠 수 있어, 폴더 구조를
@@ -65,7 +65,7 @@ def upload_to_storage(local_path: str) -> str:
     bucket.upload(
         path=storage_path,
         file=data,
-        file_options={"content-type": "image/png", "upsert": "true"},
+        file_options={"content-type": content_type, "upsert": "true"},
     )
     return bucket.get_public_url(storage_path)
 
@@ -154,6 +154,27 @@ def upload_and_publish_carousel(local_paths: list[str], caption: str) -> str:
     container_id = create_carousel_container(child_ids, caption)
     wait_until_ready(container_id)
     return publish_media(container_id)
+
+
+def upload_and_publish_reel(local_path: str, caption: str, share_to_feed: bool = False) -> str:
+    """릴스 영상(reel.mp4)을 올린다. 같은 카드가 캐러셀로 피드에 이미 있으므로 기본은 릴스 탭에만 둔다
+    (share_to_feed=false). 영상은 서버 처리에 수십 초~몇 분 걸려 이미지보다 오래 기다린다."""
+    video_url = upload_to_storage(local_path, content_type="video/mp4")
+    resp = httpx.post(
+        f"{GRAPH_BASE}/{config.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media",
+        data={
+            "media_type": "REELS",
+            "video_url": video_url,
+            "caption": caption,
+            "share_to_feed": "true" if share_to_feed else "false",
+            "access_token": config.INSTAGRAM_ACCESS_TOKEN,
+        },
+        timeout=60,
+    )
+    _raise_with_detail(resp)
+    creation_id = resp.json()["id"]
+    wait_until_ready(creation_id, max_wait_sec=300, poll_interval_sec=10)
+    return publish_media(creation_id)
 
 
 def upload_and_publish(local_path: str, caption: str) -> str:
