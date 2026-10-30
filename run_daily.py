@@ -29,6 +29,13 @@ def run_publish_phase() -> None:
     check_usage.main()
 
 
+def run_cards_phase() -> None:
+    """게시 없이 수집·선정·카드 생성(QA 포함)까지만. 새 채널 시험용: output/<날짜>/ 결과를 보고
+    괜찮으면 같은 CHANNEL로 `python publish_instagram.py`를 실행해 올린다."""
+    run_collect_phase()
+    generate_cardset.main()
+
+
 def run_auto_phase() -> None:
     """사람 승인 없이 선정부터 QA·업로드까지 한 번에 실행한다."""
     run_collect_phase()
@@ -36,13 +43,13 @@ def run_auto_phase() -> None:
     keyword_stats.snapshot()
 
 
-PHASES = {"collect": run_collect_phase, "publish": run_publish_phase, "auto": run_auto_phase}
+PHASES = {"collect": run_collect_phase, "publish": run_publish_phase, "cards": run_cards_phase, "auto": run_auto_phase}
 
 
 def main() -> None:
     phase = sys.argv[1] if len(sys.argv) > 1 else "auto"
     if phase not in PHASES:
-        print("사용법: python run_daily.py [collect|publish|auto]")
+        print("사용법: python run_daily.py [collect|publish|cards|auto]")
         sys.exit(1)
 
     events.record("run", "started", message=f"{phase} 모드 시작", detail={"mode": phase, "trigger": events.TRIGGER})

@@ -38,15 +38,41 @@ const toUrl = (p, base) => (!p || /^(https?|file|data):/.test(p) ? p : pathToFil
     await page.waitForFunction(() => [...document.images].every((img) => img.complete), null, { timeout: 15000 });
     await page.waitForTimeout(300);
 
-    // 글자가 슬라이드 밖으로 넘치면 실패 처리(템플릿·문구 길이 조정 필요)
-    const overflow = await page.evaluate(() => [...document.querySelectorAll('.slide')].flatMap((s) => {
-      const box = s.getBoundingClientRect();
-      return [...s.querySelectorAll('.content *, .foot *')].filter((el) => {
-        const r = el.getBoundingClientRect();
-        return r.width && (r.left < box.left - 1 || r.right > box.right + 1 || r.top < box.top - 1 || r.bottom > box.bottom + 1);
-      }).map((el) => `slide ${s.dataset.i}: ${el.className || el.tagName} "${el.textContent.trim().slice(0, 20)}"`);
-    }));
-    if (overflow.length) { console.error('overflow:\n' + overflow.join('\n')); process.exitCode = 2; }
+    // 렌더 QA(2026-10-30 보완). errors는 실패 처리(문구를 다시 써서 재렌더), warnings는 로그만 남긴다.
+    // - 본문(.content)·꼬리(.foot) 글자가 슬라이드 밖으로 넘침: 항상 실패(기존 기준)
+    // - 장식(.deco) 속 글자(표지 말풍선·알림·폴더 목록 등)가 슬라이드 밖으로 넘침,
+    //   overflow:hidden 칸 안에서 글자가 잘림: job.qa.strict면 실패, 아니면 경고
+    //   (경제 템플릿은 장식이 일부러 밖으로 걸치는 경우가 있어 기본은 경고)
+    // - 이미지가 깨짐(배경·마스코트 로드 실패): 항상 실패
+    // - 웹폰트 로드 실패: 경고(대체 글꼴로 그려져 디자인이 달라짐)
+    const strict = !!(job.qa && job.qa.strict);
+    const qa = await page.evaluate((strict) => {
+      const errors = [], warnings = [];
+      const ownText = (el) => [...el.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim());
+      for (const s of document.querySelectorAll('.slide')) {
+        const box = s.getBoundingClientRect();
+        const outside = (r) => r.width && (r.left < box.left - 1 || r.right > box.right + 1 || r.top < box.top - 1 || r.bottom > box.bottom + 1);
+        const tag = (el) => `slide ${s.dataset.i}: ${el.className || el.tagName} "${el.textContent.trim().slice(0, 20)}"`;
+        for (const el of s.querySelectorAll('.content *, .foot *')) {
+          if (outside(el.getBoundingClientRect())) errors.push('overflow ' + tag(el));
+        }
+        for (const el of s.querySelectorAll('.deco *')) {
+          if (ownText(el) && outside(el.getBoundingClientRect())) (strict ? errors : warnings).push('deco overflow ' + tag(el));
+        }
+        for (const el of s.querySelectorAll('.content, .content *, .foot, .foot *, .deco *')) {
+          const cs = getComputedStyle(el);
+          if (!/hidden|clip/.test(cs.overflowX + ' ' + cs.overflowY) || !el.innerText || !el.innerText.trim()) continue;
+          if (el.scrollWidth > el.clientWidth + 2 || el.scrollHeight > el.clientHeight + 2) (strict ? errors : warnings).push('clipped ' + tag(el));
+        }
+        for (const img of s.querySelectorAll('img')) {
+          if (img.getAttribute('src') && !img.naturalWidth) errors.push(`slide ${s.dataset.i}: broken image ${String(img.getAttribute('src') || '').slice(-60)}`);
+        }
+      }
+      document.fonts.forEach((f) => { if (f.status === 'error') warnings.push(`font failed: ${f.family}`); });
+      return { errors, warnings: [...new Set(warnings)] };
+    }, strict);
+    for (const w of qa.warnings) console.log('warning: ' + w);
+    if (qa.errors.length) { console.error('overflow:\n' + qa.errors.join('\n')); process.exitCode = 2; }
 
     const slides = await page.$$('.slide');
     for (let i = 0; i < slides.length; i++) {
