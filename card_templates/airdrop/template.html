@@ -81,7 +81,8 @@
       let html = `<div class="dock">${DOCK.map((c) => `<i style="background:${c}"></i>`).join("")}</div>`;
       if (slide.kind === "cover") {
         html = `<div class="frame">${head(ctx, brand)}<div class="hole"></div>${btns(ctx, ctx.props.buttons)}</div>` + html;
-        if (slide.kicker) html += `<div class="word">${ctx.esc(slide.kicker)}</div><div class="pill">${ctx.esc(ctx.props.label || "오늘의 키워드")}</div>`;
+        // 알약 스티커가 필기체 단어 아래쪽에 걸치는 건 콜라주 디자인이라 겹침 검사에서 뺀다(render.js data-overlap-ok)
+        if (slide.kicker) html += `<div class="word">${ctx.esc(slide.kicker)}</div><div class="pill" data-overlap-ok>${ctx.esc(ctx.props.label || "오늘의 키워드")}</div>`;
         html += `<span class="spark" style="left:960px;top:280px">${ctx.doodles.sparkleLine}</span>` +
                 `<span class="spark" style="left:955px;top:960px;width:34px">${ctx.doodles.sparkle}</span>` +
                 `<span class="spark" style="left:95px;top:1000px;width:30px">${ctx.doodles.sparkle}</span>`;
