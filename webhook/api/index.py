@@ -12,6 +12,7 @@ Vercel 배포 시 이 파일 하나만 번들되므로, 루트 프로젝트의 c
 import asyncio
 import hashlib
 import hmac
+import json
 import os
 import time
 import urllib.parse
@@ -30,7 +31,21 @@ TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 MAX_BACKLOG_DAYS = int(os.environ.get("MAX_BACKLOG_DAYS", 3))
 
 KST = timezone(timedelta(hours=9))
-CATEGORY_LABELS = {"index_macro": "지수/거시", "stock": "개별종목", "policy_industry": "정책/산업"}
+# 채널(인스타그램 계정)별 대시보드 설정(2026-10-30). Vercel에는 이 파일만 배포되므로
+# channels/<채널>/channel.json의 이름·카테고리를 여기에 옮겨 둔다. 카테고리를 바꾸면 여기도 같이 고칠 것.
+# daily_posts: 하루 게시 수를 정한 채널(세 분야 후보 중 1~N건 선정). None이면 카테고리별 1건.
+CHANNELS = {
+    "economy": {
+        "name": "묘한 경제", "handle": "@myohan.economy", "daily_posts": None,
+        "categories": {"index_macro": "지수/거시", "stock": "개별종목", "policy_industry": "정책/산업"},
+    },
+    "youth": {
+        "name": "정보담당", "handle": "", "daily_posts": 2,
+        "categories": {"youth_support": "지원금/제도", "youth_job": "채용/취업·자격증", "youth_activity": "대외활동/공모전"},
+    },
+}
+DEFAULT_CHANNEL = "economy"
+CATEGORY_LABELS = {k: v for ch in CHANNELS.values() for k, v in ch["categories"].items()}
 
 
 def sb_headers() -> dict:
@@ -133,8 +148,31 @@ DASHBOARD_SESSION_SECRET = os.environ.get("DASHBOARD_SESSION_SECRET", "")
 SESSION_COOKIE = "mh_session"
 SESSION_DAYS = 30
 STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "cards")
-CATEGORIES = ("index_macro", "stock", "policy_industry")
 PAGE_SIZE = 1000
+
+
+def channel_ctx(channel: str | None) -> dict:
+    """대시보드 API의 ?channel= 값 → 그 채널의 카테고리·필터(2026-10-30 채널 전환). 모르는 값은 400."""
+    key = channel or DEFAULT_CHANNEL
+    if key not in CHANNELS:
+        raise HTTPException(status_code=400, detail=f"unknown channel: {key}")
+    cfg = CHANNELS[key]
+    cats = tuple(cfg["categories"])
+    return {
+        "key": key,
+        "cfg": cfg,
+        "categories": cats,
+        "channel_filter": f"eq.{key}",
+        "category_filter": f"in.({','.join(cats)})",
+        "target": cfg["daily_posts"] or len(cats),
+    }
+
+
+def channels_for_page() -> str:
+    """화면 스크립트에 넣을 채널 목록 JSON(</script> 조기 종료 방지)."""
+    data = {k: {"name": v["name"], "handle": v["handle"], "daily_posts": v["daily_posts"], "categories": v["categories"]}
+            for k, v in CHANNELS.items()}
+    return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
 
 
 def _sign(payload: str) -> str:
@@ -297,7 +335,7 @@ async def dashboard_page(request: Request):
     if not is_authenticated(request):
         return render_login("")
     return HTMLResponse(
-        DASHBOARD_HTML.replace("{storage_base}", public_url("")),
+        DASHBOARD_HTML.replace("{storage_base}", public_url("")).replace("{channels_json}", channels_for_page()),
         headers={"Cache-Control": "no-store"},
     )
 
@@ -333,17 +371,18 @@ async def logout():
 
 
 @app.get("/api/dash/today", dependencies=[Depends(require_auth)])
-async def dash_today():
+async def dash_today(channel: str | None = None):
+    ch = channel_ctx(channel)
     today = datetime.now(KST).date()
     start, end = kst_day_range(today)
     events = sb_get_all(
         "pipeline_events",
-        {"select": "*", "created_at": f"gte.{start}", "order": "created_at.asc,id.asc"},
+        {"select": "*", "channel": ch["channel_filter"], "created_at": f"gte.{start}", "order": "created_at.asc,id.asc"},
     )
     showing = "today"
     if not events:
         # 오늘 아직 실행 전이면 가장 최근 실행을 보여준다(빈 화면 대신).
-        latest = sb_get("pipeline_events", {"select": "run_id", "order": "created_at.desc", "limit": "1"})
+        latest = sb_get("pipeline_events", {"select": "run_id", "channel": ch["channel_filter"], "order": "created_at.desc", "limit": "1"})
         if latest:
             events = sb_get_all(
                 "pipeline_events",
@@ -355,12 +394,12 @@ async def dash_today():
         start, end = kst_day_range(to_kst(events[0]["created_at"]).date())
     cards = sb_get_all(
         "cards",
-        {"select": "id,category,final_title,image_path,published,created_at",
+        {"select": "id,category,final_title,image_path,published,created_at", "category": ch["category_filter"],
          "and": f"(created_at.gte.{start},created_at.lt.{end})", "order": "created_at.asc"},
     )
     selected = sb_get_all(
         "news_items",
-        {"select": "id,category,title,source,url,collected_at", "status": "eq.approved",
+        {"select": "id,category,title,source,url,collected_at", "status": "eq.approved", "category": ch["category_filter"],
          "and": f"(collected_at.gte.{start},collected_at.lt.{end})", "order": "collected_at.asc"},
     )
 
@@ -370,37 +409,40 @@ async def dash_today():
 
     runs = [e for e in events if e["stage"] == "run"]
     return {
+        "channel": ch["key"],
         "now": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"),
         "showing": showing,
         "day": to_kst(events[0]["created_at"]).strftime("%Y-%m-%d") if events else today.isoformat(),
         "kpi": {
             "collected": stage_count("collect"),
             "cleaned": stage_count("clean"),
-            "selected": len({n["category"] for n in selected}),
+            "selected": len(selected) if ch["cfg"]["daily_posts"] else len({n["category"] for n in selected}),
             "published": sum(1 for c in cards if c["published"]),
-            "target": len(CATEGORIES),
+            "target": ch["target"],
         },
         "run": {
             "status": runs[-1]["status"],
             "time": to_kst(runs[-1]["created_at"]).strftime("%H:%M"),
             "trigger": (runs[0].get("detail") or {}).get("trigger"),
         } if runs else None,
-        "categories": [category_state(c, cards, selected, events) for c in CATEGORIES],
+        "categories": [category_state(c, cards, selected, events) for c in ch["categories"]],
         "timeline": [event_view(e) for e in events],
     }
 
 
 @app.get("/api/dash/topics", dependencies=[Depends(require_auth)])
-async def dash_topics(day_param: str | None = Query(None, alias="date"), pool: int = 20):
+async def dash_topics(day_param: str | None = Query(None, alias="date"), pool: int = 20, channel: str | None = None):
+    ch = channel_ctx(channel)
     day = parse_day(day_param)
     start, end = kst_day_range(day)
     window = f"(collected_at.gte.{start},collected_at.lt.{end})"
     selected = sb_get_all(
         "news_items",
-        {"select": "id,category,title,source,url,keyword,published_at", "status": "eq.approved", "and": window},
+        {"select": "id,category,title,source,url,keyword,published_at", "status": "eq.approved",
+         "category": ch["category_filter"], "and": window},
     )
     result = []
-    for category in CATEGORIES:
+    for category in ch["categories"]:
         candidates = sb_get(
             "news_items",
             {"select": "id,title,source,url,keyword,published_at,status", "category": f"eq.{category}",
@@ -420,10 +462,11 @@ async def dash_topics(day_param: str | None = Query(None, alias="date"), pool: i
 
 
 @app.get("/api/dash/keywords", dependencies=[Depends(require_auth)])
-async def dash_keywords():
+async def dash_keywords(channel: str | None = None):
+    ch = channel_ctx(channel)
     latest = sb_get(
         "pipeline_events",
-        {"select": "created_at,detail", "stage": "eq.keyword_stats", "status": "eq.success",
+        {"select": "created_at,detail", "stage": "eq.keyword_stats", "status": "eq.success", "channel": ch["channel_filter"],
          "order": "created_at.desc", "limit": "1"},
     )
     if not latest:
@@ -438,21 +481,23 @@ async def dash_keywords():
 
 
 @app.get("/api/dash/calendar", dependencies=[Depends(require_auth)])
-async def dash_calendar(days: int = 30):
+async def dash_calendar(days: int = 30, channel: str | None = None):
+    ch = channel_ctx(channel)
     days = max(7, min(days, 90))
     today = datetime.now(KST).date()
     first = today - timedelta(days=days - 1)
     start, _ = kst_day_range(first)
     cards = sb_get_all(
         "cards",
-        {"select": "category,published,created_at,final_title", "created_at": f"gte.{start}", "order": "id.asc"},
+        {"select": "category,published,created_at,final_title", "category": ch["category_filter"],
+         "created_at": f"gte.{start}", "order": "id.asc"},
     )
     failures = sb_get_all(
         "pipeline_events",
         {"select": "category,created_at,message", "stage": "eq.cardset", "status": "eq.failed",
-         "created_at": f"gte.{start}", "order": "id.asc"},
+         "channel": ch["channel_filter"], "created_at": f"gte.{start}", "order": "id.asc"},
     )
-    grid = {c: {} for c in CATEGORIES}
+    grid = {c: {} for c in ch["categories"]}
     for f in failures:
         if f.get("category") in grid:
             grid[f["category"]][to_kst(f["created_at"]).date().isoformat()] = {"state": "failed", "title": f.get("message")}
@@ -471,24 +516,27 @@ async def dash_calendar(days: int = 30):
                 "label": CATEGORY_LABELS[c],
                 "cells": [grid[c].get(d, {"state": "none"}) for d in dates],
                 "published": sum(1 for v in grid[c].values() if v["state"] == "published"),
-                "quota_tomorrow": get_allowed_quota(c, as_of=tomorrow),
+                # 하루 게시 수를 정한 채널(정보담당)은 이월 쿼터를 쓰지 않는다.
+                "quota_tomorrow": None if ch["cfg"]["daily_posts"] else get_allowed_quota(c, as_of=tomorrow),
             }
-            for c in CATEGORIES
+            for c in ch["categories"]
         ],
         "max_backlog_days": MAX_BACKLOG_DAYS,
+        "daily_posts": ch["cfg"]["daily_posts"],
     }
 
 
 @app.get("/api/dash/cards", dependencies=[Depends(require_auth)])
-async def dash_cards(day_param: str | None = Query(None, alias="date")):
+async def dash_cards(day_param: str | None = Query(None, alias="date"), channel: str | None = None):
+    ch = channel_ctx(channel)
     since, _ = kst_day_range(datetime.now(KST).date() - timedelta(days=29))
-    recent = sb_get_all("cards", {"select": "created_at", "created_at": f"gte.{since}", "order": "created_at.desc"})
+    recent = sb_get_all("cards", {"select": "created_at", "category": ch["category_filter"], "created_at": f"gte.{since}", "order": "created_at.desc"})
     available = sorted({to_kst(c["created_at"]).date().isoformat() for c in recent}, reverse=True)
     day = parse_day(day_param) if day_param else (date.fromisoformat(available[0]) if available else datetime.now(KST).date())
     start, end = kst_day_range(day)
     cards = sb_get_all(
         "cards",
-        {"select": "id,category,final_title,image_path,published,created_at,news_item_id",
+        {"select": "id,category,final_title,image_path,published,created_at,news_item_id", "category": ch["category_filter"],
          "and": f"(created_at.gte.{start},created_at.lt.{end})", "order": "created_at.asc"},
     )
     news_ids = ",".join(str(c["news_item_id"]) for c in cards if c.get("news_item_id"))
@@ -510,6 +558,36 @@ async def dash_cards(day_param: str | None = Query(None, alias="date")):
             for c in cards
         ],
     }
+
+
+@app.get("/api/dash/overview", dependencies=[Depends(require_auth)])
+async def dash_overview():
+    """채널별 오늘 요약(오늘 탭 맨 위 채널 카드). 화면은 30초에 한 번만 부른다."""
+    today = datetime.now(KST).date()
+    start, end = kst_day_range(today)
+    result = []
+    for key in CHANNELS:
+        ch = channel_ctx(key)
+        cards = sb_get_all("cards", {"select": "published", "category": ch["category_filter"],
+                                     "and": f"(created_at.gte.{start},created_at.lt.{end})"})
+        selected = sb_count("news_items", {"status": "eq.approved", "category": ch["category_filter"],
+                                           "and": f"(collected_at.gte.{start},collected_at.lt.{end})"})
+        failed = sb_count("pipeline_events", {"channel": ch["channel_filter"], "status": "eq.failed",
+                                              "created_at": f"gte.{start}"})
+        runs = sb_get("pipeline_events", {"select": "status,created_at", "channel": ch["channel_filter"],
+                                          "stage": "eq.run", "order": "created_at.desc", "limit": "1"})
+        result.append({
+            "key": key,
+            "name": ch["cfg"]["name"],
+            "target": ch["target"],
+            "selected": selected,
+            "carded": len(cards),
+            "published": sum(1 for c in cards if c["published"]),
+            "failed": failed,
+            "last_run": {"status": runs[0]["status"], "when": to_kst(runs[0]["created_at"]).strftime("%m/%d %H:%M")}
+            if runs else None,
+        })
+    return {"date": today.isoformat(), "channels": result}
 
 
 @app.post("/api/index")
@@ -615,6 +693,8 @@ _BASE_CSS = r"""
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{background:var(--bg);color:var(--ink);font-family:var(--sans);word-break:keep-all;overflow-wrap:anywhere}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 body{min-height:100vh;background:radial-gradient(1200px 600px at 85% -10%,rgba(199,185,242,.10),transparent 60%),radial-gradient(900px 500px at -10% 110%,rgba(127,168,212,.08),transparent 60%),var(--bg)}
 a{color:inherit}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
@@ -643,7 +723,7 @@ input:focus{border-color:var(--lav)}
 
 DASHBOARD_HTML = r"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex"><meta name="theme-color" content="#15131B"><title>묘한 경제 공장</title>
+<meta name="robots" content="noindex"><meta name="theme-color" content="#15131B"><title>카드뉴스 공장</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
 <style>""" + _BASE_CSS + r"""
 .app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
@@ -744,6 +824,20 @@ a.cc-title:hover{text-decoration:underline}
 .lb-btn{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.12);font-size:22px}
 .lb-prev{left:12px}.lb-next{right:12px}.lb-close{position:absolute;top:14px;right:14px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.12);font-size:20px}
 .muted{color:var(--sub);font-size:13px;line-height:1.6}
+.app{min-height:100dvh}
+.top-r{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.chseg button{min-width:92px}
+.chstrip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.chcard{text-align:left;display:flex;flex-direction:column;gap:10px;cursor:pointer;width:100%}
+.chcard.on{border-color:var(--lav);box-shadow:inset 0 0 0 1px var(--lav)}
+.chc-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.chc-head b{font-size:16px}
+.chc-nums{display:flex;gap:14px;font-size:13px;color:var(--sub);flex-wrap:wrap}
+.chc-nums b{color:var(--ink);font-size:17px;margin-left:3px}
+.chc-run{font-size:12px;color:var(--faint)}
+.heat-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+.heat .lbl,.heat>div:first-of-type{position:sticky;left:0;z-index:1;background:var(--surface);padding-right:6px}
+body[data-ch="youth"] .mascot,body[data-ch="youth"] .notice img{display:none}
 .tabbar{display:none}
 @media (max-width:1100px){.k3{grid-template-columns:minmax(0,1fr)}.k4{grid-template-columns:repeat(2,minmax(0,1fr))}.split{grid-template-columns:minmax(0,1fr)!important}}
 @media (max-width:820px){
@@ -762,6 +856,33 @@ a.cc-title:hover{text-decoration:underline}
   .axis{font-size:10px}
   .slides{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
   .slides img{border-radius:8px}
+  .top{flex-wrap:wrap}.top-r{width:100%;justify-content:space-between}
+  .chseg{flex:1}.chseg button{flex:1;min-width:0}
+  .heat{min-width:560px}
+}
+/* 갤럭시 S 시리즈(가로 360~412px)·폴드 커버 화면(344px) */
+@media (max-width:440px){
+  main{padding:14px 12px calc(88px + env(safe-area-inset-bottom))}
+  .grid{gap:10px}
+  .panel{padding:14px;border-radius:16px}
+  .top{margin-bottom:14px}.top h1{font-size:20px}
+  .kpi{gap:6px}.kpi .ic{width:32px;height:32px;border-radius:10px}.kpi .ic svg{width:18px;height:18px}
+  .kpi b{font-size:21px}.kpi span{font-size:12px}
+  .chstrip{gap:8px;margin-bottom:12px}
+  .chcard{padding:12px;gap:8px}.chc-head b{font-size:14px}.chc-nums{gap:8px;font-size:12px}.chc-nums b{font-size:15px}
+  .feed li{grid-template-columns:40px 10px minmax(0,1fr);gap:8px;font-size:13px}
+  .datenav{gap:6px}.datenav b{min-width:84px;font-size:14px}
+  .datenav button,.seg button,select{padding:8px 10px;font-size:13px}
+  .cc-cover{max-height:180px}
+  .mascot{width:52px;height:52px;border-radius:14px}
+  .bal{grid-template-columns:minmax(0,1fr) auto;gap:6px 8px}.bal .bar{grid-column:1/-1;order:3}.bal .chip{justify-self:start}
+  .heat-wrap{--lw:64px!important}
+  .lb-btn{display:none}
+}
+@media (max-width:360px){
+  .chstrip{grid-template-columns:minmax(0,1fr)}
+  .k4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tabbar button{font-size:10px}
 }
 </style></head><body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -777,7 +898,7 @@ a.cc-title:hover{text-decoration:underline}
 </defs></svg>
 <div class="app">
   <aside class="side">
-    <div class="brand"><img data-cat="cat-default" alt=""><div><b>묘한 경제</b><span>카드뉴스 공장</span></div></div>
+    <div class="brand"><img data-cat="cat-default" alt=""><div><b id="brandName">묘한 경제</b><span>카드뉴스 공장</span></div></div>
     <nav class="nav" id="sideNav"></nav>
     <div class="side-foot">
       <div class="live" id="live1"><i></i><span>연결 중…</span></div>
@@ -785,7 +906,7 @@ a.cc-title:hover{text-decoration:underline}
     </div>
   </aside>
   <main>
-    <header class="top"><div><h1 id="title">오늘</h1><p id="subtitle"></p></div><div class="live" id="live2"><i></i><span>연결 중…</span></div></header>
+    <header class="top"><div><h1 id="title">오늘</h1><p id="subtitle"></p></div><div class="top-r"><div class="seg chseg" id="chSeg" role="tablist" aria-label="채널"></div><div class="live" id="live2"><i></i><span>연결 중…</span></div></div></header>
     <section class="view" id="v-today"></section>
     <section class="view" id="v-topics"></section>
     <section class="view" id="v-keywords"></section>
@@ -798,12 +919,19 @@ a.cc-title:hover{text-decoration:underline}
 <script>
 const STORAGE = "{storage_base}";
 const POLL_MS = 4000;
+const CHANNELS = {channels_json};
+const CH_COLORS = ["var(--sky)", "var(--pink)", "var(--mint)", "var(--peach)", "var(--lav)", "var(--cream)"];
+let CH = new URLSearchParams(location.search).get("ch") || localStorage.getItem("mh_channel") || "economy";
+if (!CHANNELS[CH]) CH = Object.keys(CHANNELS)[0];
+const OV_MS = 30000;
+let ovCache = null, ovAt = 0;
 const TABS = [
   ["today","오늘","실시간 파이프라인 현황"],["topics","주제","자동 선정된 기사와 후보 풀"],
   ["keywords","키워드","검색어별 수집 대비 선정률"],["calendar","캘린더","최근 30일 게시 기록과 발행 균형"],
   ["cards","카드","생성된 캐러셀 미리보기"],
 ];
-const CAT = {index_macro:{label:"지수/거시",c:"var(--sky)"},stock:{label:"개별종목",c:"var(--pink)"},policy_industry:{label:"정책/산업",c:"var(--mint)"}};
+const CAT = {};  // 모든 채널의 카테고리 → 이름·색(경제는 기존 색 그대로)
+Object.values(CHANNELS).forEach((ch, ci) => Object.entries(ch.categories).forEach(([k, label], i) => { CAT[k] = {label, c: CH_COLORS[(ci * 3 + i) % CH_COLORS.length]}; }));
 const STATE = {
   published:["게시됨","var(--mint)","cat-cheer"], publishing:["게시 중","var(--lav)","cat-money"],
   carded:["카드 생성됨","var(--sky)","cat-happy"], making:["카드 만드는 중","var(--lav)","cat-thinking"],
@@ -826,6 +954,20 @@ document.querySelectorAll("img[data-cat]").forEach(i => i.src = catImg(i.dataset
 let tab = "today", timer = null, topicsDay = null, cardsDay = null, kwFilter = "all", kwCat = "all", kwData = null, lbList = [], lbIdx = 0;
 
 const navHtml = () => TABS.map(([k,l]) => `<button data-tab="${k}"><svg><use href="#i-${k}"/></svg><span>${l}</span></button>`).join("");
+$("#chSeg").innerHTML = Object.entries(CHANNELS).map(([k, c]) => `<button data-ch="${esc(k)}" role="tab">${esc(c.name)}</button>`).join("");
+document.querySelectorAll("[data-ch]").forEach(b => b.onclick = () => setChannel(b.dataset.ch));
+function paintChannel() {
+  document.querySelectorAll("[data-ch]").forEach(b => { b.classList.toggle("on", b.dataset.ch === CH); b.setAttribute("aria-selected", b.dataset.ch === CH); });
+  $("#brandName").textContent = CHANNELS[CH].name;
+  document.body.dataset.ch = CH;
+  document.title = CHANNELS[CH].name + " · 카드뉴스 공장";
+}
+function setChannel(k) {
+  if (!CHANNELS[k] || k === CH) return;
+  CH = k; localStorage.setItem("mh_channel", k);
+  topicsDay = null; cardsDay = null; kwData = null; kwCat = "all"; kwFilter = "all";
+  paintChannel(); refresh();
+}
 $("#sideNav").innerHTML = navHtml(); $("#tabBar").innerHTML = navHtml();
 document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { location.hash = b.dataset.tab; });
 
@@ -834,6 +976,7 @@ function setLive(ok, text) {
 }
 
 async function api(path) {
+  path += (path.includes("?") ? "&" : "?") + "channel=" + encodeURIComponent(CH);
   const r = await fetch(path, {cache: "no-store", headers: {"Accept": "application/json"}});
   if (r.status === 401) { location.reload(); throw new Error("login"); }
   if (!r.ok) throw new Error(r.status + " " + (await r.text()).slice(0, 120));
@@ -872,8 +1015,24 @@ function kpiTile(label, value, icon, color, sub) {
 }
 
 /* ---------- 오늘 ---------- */
+async function loadOverview() {
+  if (ovCache && Date.now() - ovAt < OV_MS) return ovCache;
+  try { ovCache = await api("/api/dash/overview"); ovAt = Date.now(); } catch (e) { if (e.message === "login") throw e; }
+  return ovCache;
+}
+function overviewStrip(ov) {
+  if (!ov || !ov.channels || ov.channels.length < 2) return "";
+  return `<div class="chstrip">${ov.channels.map(c => {
+    const run = c.last_run ? `${EV[c.last_run.status] ? EV[c.last_run.status][0] : esc(c.last_run.status)} · ${esc(c.last_run.when)}` : "기록 없음";
+    const color = c.published >= c.target ? "var(--mint)" : (c.failed ? "var(--peach)" : "var(--lav)");
+    return `<button class="panel chcard${c.key === CH ? " on" : ""}" data-chgo="${esc(c.key)}" aria-label="${esc(c.name)} 보기">
+      <div class="chc-head"><b>${esc(c.name)}</b><span class="chip" style="--c:${color}">게시 ${c.published}/${c.target}</span></div>
+      <div class="chc-nums"><span>선정<b>${c.selected}</b></span><span>카드<b>${c.carded}</b></span><span>실패<b>${c.failed}</b></span></div>
+      <div class="chc-run">마지막 실행 ${run}</div></button>`;
+  }).join("")}</div>`;
+}
 async function loadToday() {
-  const d = await api("/api/dash/today");
+  const [d, ov] = await Promise.all([api("/api/dash/today"), loadOverview()]);
   const k = d.kpi;
   const top = d.showing === "latest_run"
     ? notice("cat-sit", `오늘은 아직 실행 전이에요. 가장 최근 실행(<b>${esc(d.day)}</b>) 기록을 보여드려요.`)
@@ -894,15 +1053,16 @@ async function loadToday() {
     const [st, color] = EV[e.status] || [e.status, "var(--sub)"];
     return `<li style="--c:${color}"><time>${esc(e.time.slice(0,5))}</time><span class="dot"></span><div><span class="st">${esc((STAGE[e.stage] || e.stage) + " " + st)}</span>${e.category ? catChip(e.category) : ""}<div class="msg">${esc(e.message || "")}</div></div></li>`;
   }).join("")}</ul>` : `<p class="empty">기록 없음</p>`;
-  $("#v-today").innerHTML = `${top}
+  $("#v-today").innerHTML = `${overviewStrip(ov)}${top}
     <div class="grid k4" style="margin-bottom:16px">
       ${kpiTile("수집", fmt(k.collected), "collect", "var(--sky)", "Google News RSS")}
       ${kpiTile("정제", fmt(k.cleaned), "topics", "var(--lav)", "중복 제거 후 후보")}
-      ${kpiTile("선정", `${k.selected}<small> / ${k.target}</small>`, "pick", "var(--pink)", "카테고리별 1건")}
+      ${kpiTile("선정", `${k.selected}<small> / ${k.target}</small>`, "pick", "var(--pink)", CHANNELS[CH].daily_posts ? `하루 1~${CHANNELS[CH].daily_posts}건` : "카테고리별 1건")}
       ${kpiTile("게시", `${k.published}<small> / ${k.target}</small>`, "send", "var(--mint)", "인스타그램")}
     </div>
     <div class="grid k3" style="margin-bottom:16px">${cats}</div>
     <div class="panel"><h2>타임라인 <small>${run}</small></h2>${feed}</div>`;
+  document.querySelectorAll("[data-chgo]").forEach(b => b.onclick = () => setChannel(b.dataset.chgo));
 }
 
 /* ---------- 주제 ---------- */
@@ -954,7 +1114,7 @@ function renderKeywords() {
     </div>
     <div class="toolbar">
       <div class="seg" id="kwF"><button data-v="all">전체</button><button data-v="flag">교체 검토만</button></div>
-      <div class="seg" id="kwC"><button data-v="all">모든 분야</button>${Object.entries(CAT).map(([k, v]) => `<button data-v="${k}">${v.label}</button>`).join("")}</div>
+      <div class="seg" id="kwC"><button data-v="all">모든 분야</button>${Object.entries(CHANNELS[CH].categories).map(([k, label]) => `<button data-v="${esc(k)}">${esc(label)}</button>`).join("")}</div>
     </div>
     <div class="panel">${rows.map(r => `<div class="kw">
       <div class="name">${esc(r.keyword)} ${catChip(r.category)}${r.replace ? `<span class="chip flag">교체 검토</span>` : ""}</div>
@@ -976,14 +1136,18 @@ async function loadCalendar() {
   $("#v-calendar").innerHTML = `
     <div class="panel heat-wrap" style="margin-bottom:16px;--lw:84px"><h2>날짜 × 카테고리 <small>${esc(d.dates[0])} ~ ${esc(d.dates[n - 1])}</small></h2>
       <div class="legend" style="margin-bottom:14px"><span><i style="background:var(--mint)"></i>게시됨</span><span><i style="background:var(--sky)"></i>카드만 생성</span><span><i style="background:var(--peach)"></i>QA 실패</span><span><i class="cell" style="height:12px"></i>없음</span></div>
-      <div class="heat" style="grid-template-columns:var(--lw) repeat(${n},minmax(0,1fr))">${heat}${axis}</div></div>
+      <div class="heat-scroll" id="heatScroll"><div class="heat" style="grid-template-columns:var(--lw) repeat(${n},minmax(0,1fr))">${heat}${axis}</div></div></div>
     <div class="grid split" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)">
       <div class="panel"><h2>카테고리별 발행 균형 <small>최근 ${n}일 게시 수</small></h2>
         ${d.rows.map(r => `<div class="bal">${catChip(r.key)}<div class="bar" style="--c:${CAT[r.key].c}"><i style="width:${(r.published / maxPub * 100).toFixed(1)}%"></i></div><b>${r.published}<small style="color:var(--sub);font-weight:500"> / ${n}</small></b></div>`).join("")}</div>
-      <div class="panel"><h2>내일 이월 쿼터 <small>get_allowed_quota()</small></h2>
+      ${d.daily_posts ? `<div class="panel"><h2>하루 게시 목표 <small>${esc(CHANNELS[CH].name)}</small></h2>
+        <div class="quota"><b>1~${d.daily_posts}</b><span>건 / 일</span></div>
+        <p class="muted" style="margin-top:12px">세 분야 후보를 합쳐 좋은 기사가 있으면 하루 최대 ${d.daily_posts}건, 하나뿐이면 1건만 게시해요. 이월 쿼터는 쓰지 않아요.</p></div>`
+      : `<div class="panel"><h2>내일 이월 쿼터 <small>get_allowed_quota()</small></h2>
         <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">${d.rows.map(r => `<div class="quota">${catChip(r.key)}<b>${r.quota_tomorrow}</b><span>건</span></div>`).join("")}</div>
-        <p class="muted" style="margin-top:12px">발행이 빠진 연속 일수만큼(최대 ${d.max_backlog_days}일) 허용 건수가 늘어나요. 지금 auto 모드는 카테고리당 하루 1건만 선정하므로 참고 지표예요.</p></div>
+        <p class="muted" style="margin-top:12px">발행이 빠진 연속 일수만큼(최대 ${d.max_backlog_days}일) 허용 건수가 늘어나요. 지금 auto 모드는 카테고리당 하루 1건만 선정하므로 참고 지표예요.</p></div>`}
     </div>`;
+  const hs = $("#heatScroll"); if (hs) hs.scrollLeft = hs.scrollWidth;  // 폰에서는 오늘 쪽이 먼저 보이게
 }
 
 /* ---------- 카드 ---------- */
@@ -1021,5 +1185,14 @@ document.addEventListener("keydown", e => {
   if (e.key === "ArrowRight") $("#lbNext").click();
 });
 
+let touchX = null;  // 폰에서 미리보기를 좌우로 밀어 넘기기
+$("#lb").addEventListener("touchstart", e => { touchX = e.touches[0].clientX; }, {passive: true});
+$("#lb").addEventListener("touchend", e => {
+  if (touchX == null) return;
+  const dx = e.changedTouches[0].clientX - touchX; touchX = null;
+  if (Math.abs(dx) > 40) (dx < 0 ? $("#lbNext") : $("#lbPrev")).click();
+});
+
+paintChannel();
 show(location.hash.slice(1) || "today");
 </script></body></html>"""
