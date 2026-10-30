@@ -2,6 +2,42 @@
 
 마지막 갱신: 2026-10-30
 
+## 2026-10-30 디징 원본을 뉴스 기사 → 공식 모집 공고로 전환 (코드 완료, DB 마이그레이션·실행 검증 전)
+
+운영자: 기사는 대부분 사후 보도라 "지금 신청할 수 있는 정보" 컨셉과 안 맞는다(10/30 한남대 박람회 건). 경제 채널은 그대로.
+
+- **수집** `collect_listings.py`(youth `run_daily.py collect|cards|auto`에서 collect_news·clean_news 대신 실행. channel.json `"source": "listings"`).
+  공통 기준: 마감 ≥ 오늘+3일, 시작 ≤ 오늘+7일. 마감 없는 상시 공고는 D-n을 못 써서 모으지 않음.
+  - 잡알리오 `ongoingYn=Y` 전체 → 청년인턴(R1060·R1070) 또는 신입(R2010) 정규·무기계약직(대체인력 제외). 근무지 8개 시도 이상이면 region=전국. youth_job
+  - 온통청년 getPlcy 전체(500건씩 8쪽, 약 10초) → 신청기간 구분 0057001(특정기간)만, 등록 최상위 기관이 중앙부처면 전국·광역이면 그 시도,
+    기관명·제목에 시군구 이름(정읍시·영암군·관악구청 등)이 있으면 제외, 최대 연령 19 미만·최소 연령 35 이상 제외.
+    신청 기간이 120일 넘으면 `year_round`(선정 감점). youth_support
+  - K-Startup `getAnnouncementInformation01`(`cond[rcrt_prgs_yn::EQ]=Y`) → 공공기관·지자체만(민간 투자 IR·대학 재학생용 제외), 예비창업자 또는 제목에 "청년",
+    만 20~39세 포함, 대학생·일반인 대상, "행사ㆍ네트워크"(특강·포럼) 제외, 시군구 주관 제외. youth_support
+  - Aside inbox `channels/youth/inbox/aside-<오늘>.json`(-test 파일은 이름이 달라 안 읽힘). youth_activity
+  - 중복: source_id → 수집처·공식 URL → 제목 유사도 90 이상. 출처 하나가 실패해도 나머지는 저장, 오류는 collect 이벤트 detail.errors.
+  - 저장: 새 공고는 status='filtered'로, 이미 있는 공고는 status를 빼고 내용·마감·collected_at만 갱신(선정·만료된 공고가 후보로 돌아오지 않게).
+  - 10/30 23시 dry-run(`--dry-run`, DB 저장 없이 `output/listings-<날짜>.json`): 잡알리오 78→61, 온통청년 129→107, K-Startup 38→35(중복 제거 후 203건).
+    Aside 시험 파일을 오늘 날짜로 복사해 읽으면 12건 통과.
+- **DB** `sql/2026-10-31_listings.sql`: news_items에 source_type('news'|'listing')·apply_start·apply_end·official_url·listing(JSONB) 추가.
+  별도 테이블 대신 칸 추가를 고른 이유: 선정(status)·cards.news_item_id FK·게시·대시보드가 모두 news_items를 보고 있어 공고도 같은 흐름을 탄다.
+  공고 행: url=수집처 상세 URL, source=기관, keyword=출처 이름(잡알리오 등), summary=대상·혜택 한 줄, published_at=접수 시작일.
+  **아직 적용 안 함(운영자 확인 후 Supabase SQL Editor에서 실행).**
+- **선정** `auto_select.select_listings`: 후보 = status filtered, 마감 ≥ 오늘+3일, 접수 시작 ≤ 오늘(또는 없음). 최근 30일 카드의 공고(url·source_id·제목 90 이상) 제외.
+  우선순위 점수(전국 30/광역 10, D-10 이내 +20, 오늘 접수 시작 +15, 연중 −25, 혜택 금액·채용 10명 이상·청년인턴 가점) 상위 25건만 모델에 보여주고
+  2030 체감도까지 보고 0~2건. 모델 실패 시 0건. 카드 없이 남은 선정 공고(한도 소진 등)가 있으면 그만큼 덜 고른다.
+- **카드** `generate_cardset`: 공고는 기사 fetch 안 함. 원문 = 공고 정보 머리말(날짜는 "2026년 11월 12일" 표기 + "D-n") + raw_text
+  + 공식 페이지 본문(구글폼·단축링크 제외, 읽히면 2,500자까지). 마감은 apply_end로 결정: 지났거나 3일 미만이면 만들지 않고 status='expired'.
+  공고는 카드 생성이 다시 해도 안 될 이유로 실패하면 status='rejected'(다음 날 같은 공고로 뉴런을 또 쓰지 않게), 한도 소진(429)은 approved로 두고 재시도.
+  카드 대상은 수집 시각 대신 "선정됐고 카드 없고 마감 ≥ 오늘+3일"로 찾는다(며칠 전 수집된 공고도 선정되므로).
+- **slide_writer** `write_deck(listing={"host", "days_left"})`: 사후 보도 검사·"ended" 판단·카드 문구 속 날짜 마감 검사는 공고에선 건너뜀.
+  캡션 🗓 줄에 `D-n`(코드가 계산한 값), ✅ 줄에 공식 기관명(여러 주최면 아무거나, 부서까지 붙은 이름은 앞 낱말도 인정)이 없으면 다시 쓰게 함.
+  고지는 channel.json `listing_disclaimer`("※ 공고 내용 정리한 거야. 신청 전에 {기관} 공식 공고에서…").
+- **대시보드** 주제 탭: 공고는 마감 가까운 순, "마감 11/12 · D-13"과 출처(#잡알리오 등) 표시. 기사는 그대로.
+  **apply_end 칸을 조회하므로 마이그레이션 적용 전에 push하면 경제 주제 탭도 깨진다 → 마이그레이션 후 push.**
+- keywords.json·collect_news·clean_news는 youth 실행 경로에서 안 씀(파일은 그대로). config.py 비밀값 가림 목록에 두 API 키 추가.
+- 남은 일: 마이그레이션 적용 → 2026-10-31 07:30 이후 `CHANNEL=youth python run_daily.py cards`(게시 X)로 출처별 수집 건수·선정·카드·caption.txt·덱당 뉴런 확인.
+
 ## 2026-10-30 채널 구조 도입 + 두 번째 채널(→ 2030 청년 생활정보) (코드 완료, DB 마이그레이션·실행 검증 전)
 
 ### 계정 이름 변경: 정보담당 → "디징" (같은 날, Aside 세션)

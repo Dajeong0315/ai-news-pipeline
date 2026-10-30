@@ -10,7 +10,9 @@ import sys
 import auto_select
 import check_usage
 import clean_news
+import collect_listings
 import collect_news
+import config
 import events
 import generate_cardset
 import keyword_stats
@@ -18,6 +20,11 @@ import publish_instagram
 
 
 def run_collect_phase() -> None:
+    # 디징(youth)은 2026-10-31부터 기사 대신 공식 모집 공고를 원본으로 쓴다. keywords.json·뉴스 수집은 이 경로에서 쓰지 않는다.
+    if config.CHANNEL_CONFIG.get("source") == "listings":
+        collect_listings.main()
+        auto_select.main()
+        return
     collect_news.main()
     clean_news.main()
     auto_select.main()

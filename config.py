@@ -45,6 +45,10 @@ INSTAGRAM_API_VERSION = os.environ.get("INSTAGRAM_API_VERSION", "v21.0")
 SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "cards")
 INSTAGRAM_HANDLE = os.environ.get("INSTAGRAM_HANDLE", "@myohan.economy")
 
+# 디징 공고 수집(collect_listings.py) 키. channels/youth/.env에만 있다.
+DATA_GO_KR_SERVICE_KEY = os.environ.get("DATA_GO_KR_SERVICE_KEY", "")
+YOUTHCENTER_API_KEY = os.environ.get("YOUTHCENTER_API_KEY", "")
+
 MAX_BACKLOG_DAYS = int(os.environ.get("MAX_BACKLOG_DAYS", 3))
 SAFE_DAILY_CLOUDFLARE_CALLS = int(os.environ.get("SAFE_DAILY_CLOUDFLARE_CALLS", 12))
 
@@ -81,7 +85,7 @@ CARD_TEMPLATES = tuple(
 _SECRETS = [
     s for s in (
         SUPABASE_SERVICE_ROLE_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
-        CLOUDFLARE_API_TOKEN, INSTAGRAM_ACCESS_TOKEN,
+        CLOUDFLARE_API_TOKEN, INSTAGRAM_ACCESS_TOKEN, DATA_GO_KR_SERVICE_KEY, YOUTHCENTER_API_KEY,
     ) if len(s) >= 8
 ]
 

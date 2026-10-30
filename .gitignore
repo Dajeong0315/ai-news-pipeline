@@ -10,3 +10,5 @@ logs/
 # 릴스 배경 음원(저작권 무료라도 재배포 조건이 있어 공개 저장소에 올리지 않음)
 channels/*/music/*
 !channels/*/music/README.md
+# 디징 inbox의 날짜별 공고 파일(Aside 루틴이 매일 씀). README만 저장소에 둔다.
+channels/*/inbox/*.json

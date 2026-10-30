@@ -1,6 +1,8 @@
 {
   "_comment": "2030 청년 정보 채널. 계정 이름 \"디징\"(@dijing.kr, 구글 dijing.kr@gmail.com), 컨셉: 단톡방에서 정보 챙겨주는 친구(2026-10-30 확정, Aside 컨셉 논의). 카테고리: 지원금/제도(교육 지원 포함)·채용/취업·자격증·대외활동/공모전. 카드는 1~4장으로 핵심만, 자세한 설명은 캡션에. 템플릿은 캐릭터 없이 운영자 레퍼런스 톤(edit·folder·airdrop 등) 위주.",
   "name": "디징",
+  "source": "listings",
+  "_source_comment": "2026-10-31부터 원본은 뉴스 기사가 아니라 지금 신청 가능한 공식 모집 공고(collect_listings.py: 잡알리오·온통청년·K-Startup·Aside inbox). keywords.json은 남겨두지만 쓰지 않는다. selector_extra·post_event_patterns는 기사용이라 공고 경로에서 쓰지 않는다.",
   "brand": "card_templates/brands/youth.json",
   "card_templates": "edit,chat,soft,folder,desktop,airdrop,magazine,darkcenter:plain,blocktitle:plain",
   "categories": {
@@ -30,6 +32,7 @@
   "caption_max": 900,
   "hashtag_example": "청년정책",
   "disclaimer": "※ 기사 내용 정리한 거야. 신청 전에 기관 공고에서 자격이랑 기간 꼭 다시 확인해.",
+  "listing_disclaimer": "※ 공고 내용 정리한 거야. 신청 전에 {host} 공식 공고에서 자격이랑 기간 꼭 다시 확인해.",
   "speech": "banmal",
   "tone_rule": "말투는 친구 단톡방에서 정보 챙겨주는 친구의 다정한 반말이다. \"야 이거 너 해당될 듯\", \"이건 챙겨\", \"같이 내자\"처럼 챙겨주는 느낌으로 짧게 던지고 바로 정확한 정보로 이어간다. 몰아세우거나 비꼬는 말 금지(\"아직도 안 했어?\", \"너만 모르면 손해\", \"너만 안 함\", \"바보\" 등). 근거 없는 사실(\"다들 받았대\", \"벌써 마감 직전\") 금지. 합쇼체(\"~습니다\")·기사체(\"~했다\", \"~로 나타났다\") 금지.",
   "editor_tone": "모든 문장을 단톡방에서 정보 챙겨주는 친구의 다정한 반말(\"~야\", \"~해\", \"~래\", \"~거든\", \"~자\")로 통일한다. 챙겨주는 말투는 좋지만 압박·비꼬기·근거 없는 사실 주장은 쓰지 않는다.",

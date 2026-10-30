@@ -23,6 +23,7 @@ from pathlib import Path
 import httpx
 from PIL import Image, ImageStat
 
+import auto_select
 import config
 import events
 import reel
@@ -53,6 +54,8 @@ def pick_template(category: str, day: date | None = None, slot: int = 0) -> str:
 
 
 def fetch_approved_without_cardset() -> list[dict]:
+    if auto_select.LISTINGS:  # 공고는 며칠 전에 수집된 행도 선정되므로 수집 시각 대신 마감일로 거른다
+        return auto_select.approved_listings_without_card()
     client = get_client()
     approved_since = (datetime.now(timezone.utc) - timedelta(hours=config.MAX_AGE_HOURS)).isoformat()
     approved = (
@@ -131,24 +134,71 @@ def _record_retry(item: dict, attempt: int, reason: str) -> None:
     )
 
 
+LISTING_OFFICIAL_MAX = 2500  # 공식 페이지 본문은 공고 원문 보충용이라 짧게
+_NO_FETCH_HOSTS = ("forms.gle", "docs.google.com", "vo.la", "bit.ly")  # 신청서·단축링크는 본문이 없다
+
+
+def _korean_date(value: str) -> str:
+    d = date.fromisoformat(value)
+    return f"{d.year}년 {d.month}월 {d.day}일"
+
+
+def listing_article(item: dict, days_left: int) -> str:
+    """공고 카드의 원문 = 정규화한 공고 정보 + raw_text(+ 공식 페이지를 읽을 수 있으면 그 본문). 기사는 읽지 않는다.
+    날짜는 "2026년 11월 12일" 표기로 넣어야 카드 날짜 대조(slide_writer.check_facts)가 원문 날짜로 인정한다."""
+    info = item.get("listing") or {}
+    period = f"{_korean_date(item['apply_start'])} ~ " if item.get("apply_start") else ""
+    header = "\n".join(line for line in (
+        f"공고 제목: {item['title']}",
+        f"주최·기관: {item.get('source') or info.get('host') or ''}",
+        f"대상: {info.get('target')}" if info.get("target") else "",
+        f"혜택: {info.get('benefit')}" if info.get("benefit") else "",
+        f"신청 기간: {period}{_korean_date(item['apply_end'])}까지 (오늘 기준 D-{days_left})",
+        f"지역: {info.get('region')}" if info.get("region") else "",
+        f"공식 페이지: {item['official_url']}" if item.get("official_url") else "",
+    ) if line)
+    text = f"{header}\n\n{info.get('raw_text') or ''}".strip()
+    url = item.get("official_url") or ""
+    if url.startswith("http") and not any(h in url for h in _NO_FETCH_HOSTS):
+        official = fetch_article_text(url)[:LISTING_OFFICIAL_MAX]
+        if len(official) >= 200:
+            text += f"\n\n[공식 페이지 본문]\n{official}"
+    return text
+
+
 def process_item(item: dict, slot: int = 0) -> dict | None:
     category = item["category"]
     template = pick_template(category, slot=slot)
-    log.info("[%s] 기사 원문 수집 중 (템플릿 %s): %s", category, template, item["url"])
+    is_listing = item.get("source_type") == "listing"
+    log.info("[%s] %s 원문 수집 중 (템플릿 %s): %s", category, "공고" if is_listing else "기사", template, item["url"])
     events.record("cardset", "started", category=category, news_item_id=item["id"], message=item["title"],
                   detail={"template": template})
-    article_text = fetch_article_text(item["url"])
-    if len(article_text.strip()) < config.QA_MIN_ARTICLE_CHARS:
-        # Google News 리다이렉트가 가끔 SSL 오류로 끊긴다(2026-10-29 실측) → 한 번 더 시도
-        article_text = fetch_article_text(item["url"]) or article_text
-    log.info("[%s] 원문 %d자 확보", category, len(article_text))
 
-    def fail(message: str) -> None:
+    def fail(message: str, status: str | None = None) -> None:
         log.error("[%s] %s", category, message)
         events.record("cardset", "failed", category=category, news_item_id=item["id"], message=message)
+        if status:  # 공고는 다음 날에도 후보로 남으므로, 다시 해도 안 될 실패는 상태를 바꿔 반복 선정·뉴런 소모를 막는다
+            get_client().table("news_items").update({"status": status}).eq("id", item["id"]).execute()
 
+    listing = None
+    if is_listing:
+        # 마감은 카드 문구가 아니라 apply_end 값으로 결정한다: 지났거나 3일 미만이면 만들지 않는다
+        days_left = (date.fromisoformat(item["apply_end"]) - datetime.now(KST).date()).days if item.get("apply_end") else None
+        if days_left is None or days_left < auto_select.LISTING_MIN_DAYS_LEFT:
+            fail(f"QA: 마감까지 {days_left}일이라 게시하지 않음(3일 이상 남아야 함)", status="expired")
+            return None
+        listing = {"host": item.get("source") or (item.get("listing") or {}).get("host"), "days_left": days_left}
+        article_text = listing_article(item, days_left)
+    else:
+        article_text = fetch_article_text(item["url"])
+        if len(article_text.strip()) < config.QA_MIN_ARTICLE_CHARS:
+            # Google News 리다이렉트가 가끔 SSL 오류로 끊긴다(2026-10-29 실측) → 한 번 더 시도
+            article_text = fetch_article_text(item["url"]) or article_text
+    log.info("[%s] 원문 %d자 확보", category, len(article_text))
+
+    give_up = "rejected" if is_listing else None  # 공고만 상태를 바꾼다(기사는 24시간 지나면 저절로 후보에서 빠짐)
     if len(article_text.strip()) < config.QA_MIN_ARTICLE_CHARS:
-        fail(f"원문이 QA 최소 분량 미달로 게시하지 않음 ({len(article_text.strip())}자)")
+        fail(f"원문이 QA 최소 분량 미달로 게시하지 않음 ({len(article_text.strip())}자)", status=give_up)
         return None
 
     # 하루 게시 수를 정한 채널은 같은 카테고리가 하루 2건일 수 있어 기사 ID로 폴더를 나눈다.
@@ -162,12 +212,14 @@ def process_item(item: dict, slot: int = 0) -> dict | None:
                  if item.get("published_at") else None)
     for attempt in range(1, MAX_RENDER_ATTEMPTS + 1):
         try:
-            deck = slide_writer.write_deck(item["title"], article_text, category, hint=hint, published=published)
+            deck = slide_writer.write_deck(item["title"], article_text, category, hint=hint, published=published,
+                                           listing=listing)
         except slide_writer.SkipArticle as e:
-            fail(f"QA: {e}")
+            fail(f"QA: {e}", status=give_up)
             return None
         except Exception as e:
-            fail(f"슬라이드 내용 생성 실패로 게시하지 않음: {e}")
+            # Cloudflare 한도 소진(429)은 공고 탓이 아니니 선정 상태로 두고 다음 실행에서 다시 만든다
+            fail(f"슬라이드 내용 생성 실패로 게시하지 않음: {e}", status=None if "429" in str(e) else give_up)
             return None
         try:
             background = background or make_background(deck.get("image_prompt") or item["title"], template, out_dir)
@@ -200,7 +252,7 @@ def process_item(item: dict, slot: int = 0) -> dict | None:
         log.info("[%s] 렌더 통과 (%d장, 템플릿 %s)", category, len(deck["slides"]), template)
         return {"out_dir": out_dir, "caption": deck["caption"], "template": template}
 
-    fail(f"렌더 {MAX_RENDER_ATTEMPTS}회 실패로 게시하지 않음")
+    fail(f"렌더 {MAX_RENDER_ATTEMPTS}회 실패로 게시하지 않음", status=give_up)
     return None
 
 

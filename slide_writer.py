@@ -313,13 +313,44 @@ def check_post_event(article: str, published: date | None = None, today: date | 
         raise SkipArticle(f"이미 끝난 행사의 사후 보도({m.group(0)!r})라 게시하지 않음")
 
 
-def check_deck(deck: dict, article: str, published: date | None = None) -> None:
+def host_names(host: str | None) -> list[str]:
+    """공고 주최 표기("SBS A&T / (주)진심커뮤니케이션", "고용노동부 청년고용정책과")에서 캡션에 쓸 만한 기관명 후보.
+    여러 주최는 각각, 부서까지 붙은 이름은 앞 낱말(기관명)도 인정한다."""
+    names = []
+    for part in re.split(r"\s*[/,·]\s*", host or ""):
+        part = re.sub(r"\(주\)|\(재\)|㈜|주식회사|재단법인|사단법인", "", part).strip()
+        if len(part) >= 2:
+            names.append(part)
+            first = part.split()[0]
+            if first != part and len(first) >= 2:
+                names.append(first)
+    return names
+
+
+def check_listing_caption(deck: dict, listing: dict) -> None:
+    """공고 카드 캡션: 🗓 줄에 신청 기간과 D-n(코드가 마감일로 계산한 값), ✅ 신청 방법 줄에 공식 기관명."""
+    lines = str(deck.get("caption") or "").splitlines()
+    date_line = next((line for line in lines if CAPTION_DATE_MARK and CAPTION_DATE_MARK in line), None)
+    d_mark = f"D-{listing['days_left']}"
+    if not date_line:
+        raise ValueError(f"캡션에 {CAPTION_DATE_MARK} 신청 기간 줄이 없음(신청 기간과 {d_mark}를 넣을 것)")
+    if d_mark not in date_line.replace(" ", ""):
+        raise ValueError(f"캡션 {CAPTION_DATE_MARK} 줄에 {d_mark}가 없음(공고 정보의 값 그대로): {date_line!r}")
+    how_line = next((line for line in lines if "✅" in line), None)
+    names = host_names(listing.get("host"))
+    if names and not (how_line and any(n in how_line for n in names)):
+        raise ValueError(f"캡션 ✅ 신청 방법 줄에 공식 기관명({names[0]})이 없음: {how_line!r}")
+
+
+def check_deck(deck: dict, article: str, published: date | None = None, listing: dict | None = None) -> None:
     slides = deck.get("slides") or []
     if not SLIDES_MIN <= len(slides) <= SLIDES_MAX:
         raise ValueError(f"슬라이드 수 {len(slides)}장 ({SLIDES_MIN}~{SLIDES_MAX}장이어야 함)")
     if slides[0].get("kind") != "cover":
         raise ValueError("첫 장이 cover가 아님")
-    if CHECK_DEADLINE:  # 건너뛸 기사면 다른 검사로 편집을 되풀이하기 전에 먼저 끊는다(뉴런 절약)
+    # 건너뛸 기사면 다른 검사로 편집을 되풀이하기 전에 먼저 끊는다(뉴런 절약).
+    # 공고는 마감일(apply_end)로 이미 결정적으로 걸렀으니 카드 문구 속 날짜로 다시 판단하지 않는다.
+    if CHECK_DEADLINE and not listing:
         check_deadline(deck, published)
     subtitle = slides[0].get("subtitle")
     if isinstance(subtitle, str) and subtitle.strip() and not _BARE_SUBTITLE_RE.sub("", subtitle):
@@ -394,6 +425,8 @@ def check_deck(deck: dict, article: str, published: date | None = None) -> None:
             raise ValueError(f"캡션 마지막 줄이 친구 태그·공유 부탁이 아님({'/'.join(CAPTION_CLOSING_WORDS)} 중 하나를 넣을 것): {last!r}")
     if CAPTION_DATE_MARK and _PERIOD_RE.search(article) and CAPTION_DATE_MARK not in str(deck.get("caption") or ""):
         raise ValueError(f"원문에 날짜·기간이 있는데 캡션에 {CAPTION_DATE_MARK} 기간 줄이 없음(원문 표기 그대로 넣을 것)")
+    if listing:
+        check_listing_caption(deck, listing)
     check_plan_notice(deck, article)
 
 
@@ -462,15 +495,39 @@ def _raise_if_quota_exhausted(e: Exception) -> None:
         raise RuntimeError("Cloudflare Workers AI 일일 무료 한도 소진(429) — 09:00 KST 리셋 후 재시도") from e
 
 
-def write_deck(title: str, article: str, category: str, hint: str = "", published: date | None = None) -> dict:
+def display_host(host: str | None) -> str:
+    """캡션·고지에 쓸 기관명. "고용노동부 청년고용정책과"처럼 부서까지 붙어 길면 앞 낱말만."""
+    names = host_names(host)
+    if not names:
+        return host or "주최 기관"
+    return names[0] if len(names[0]) <= 15 or len(names) == 1 else names[1]
+
+
+def listing_disclaimer(host: str | None) -> str:
+    return config.CHANNEL_CONFIG.get("listing_disclaimer", DISCLAIMER).replace("{host}", display_host(host))
+
+
+def write_deck(title: str, article: str, category: str, hint: str = "", published: date | None = None,
+               listing: dict | None = None) -> dict:
     """초안 작성 → 편집장 검수(구성·문장 구조·어감·가독성) → 코드 검사.
     검사에 걸리면 걸린 이유를 편집 단계에 돌려줘 고치게 하고, 그래도 안 되면 초안부터 다시 쓴다.
     hint: 지난번 렌더에서 걸린 문제(글자 넘침 등). 다시 쓸 때 피하도록 원문 뒤에 붙인다.
-    published: 기사 발행일(KST). "29일"처럼 일만 쓴 날짜를 푸는 기준이고, 없으면 오늘."""
+    published: 기사 발행일(KST). "29일"처럼 일만 쓴 날짜를 푸는 기준이고, 없으면 오늘.
+    listing: 공식 모집 공고면 {"host": 주최, "days_left": 마감까지 남은 날}(디징, 2026-10-31). 마감은 호출 측이
+    apply_end로 이미 걸렀으므로 기사용 검사(사후 보도·"ended" 판단·카드 문구 속 날짜)는 건너뛴다."""
     article = clean_article(article)
-    if CHECK_DEADLINE:  # 사후 보도는 모델을 부르기 전에 거른다(뉴런 절약)
+    if CHECK_DEADLINE and not listing:  # 사후 보도는 모델을 부르기 전에 거른다(뉴런 절약)
         check_post_event(article, published)
-    source = normalize_hanja(f"카테고리: {config.CATEGORY_LABELS.get(category, category)}\n제목: {title}\n\n[기사 원문]\n{article}")
+    label = "공고 원문" if listing else "기사 원문"
+    source = normalize_hanja(f"카테고리: {config.CATEGORY_LABELS.get(category, category)}\n제목: {title}\n\n[{label}]\n{article}")
+    if listing:
+        source += (
+            "\n\n[공고 카드 규칙] 위 원문은 뉴스 기사가 아니라 지금 신청할 수 있는 공식 모집 공고다. 원문의 \"기사\"는 이 공고를 말한다. "
+            "덱의 \"ended\"는 false. "
+            f"캡션 {CAPTION_DATE_MARK} 줄에 신청 기간과 \"D-{listing['days_left']}\"를 그대로 쓴다"
+            f"(예: \"{CAPTION_DATE_MARK} ~11월 12일까지 (D-{listing['days_left']})\", 날짜는 원문 표기). "
+            f"캡션 ✅ 신청 방법 줄에 공식 기관명 \"{display_host(listing.get('host'))}\"을 쓴다."
+        )
     if hint:
         source += f"\n\n[지난번 카드 렌더에서 걸린 문제 — 이번엔 피할 것]\n{hint}"
     last_error: Exception | None = None
@@ -483,7 +540,7 @@ def write_deck(title: str, article: str, category: str, hint: str = "", publishe
             print(f"[slide_writer] 시도 {attempt}/{MAX_ATTEMPTS} 초안 파싱 실패: {e}", file=sys.stderr)
             continue
         # 지난 행사 결과 기사 등. 다시 써도 소용없다. 원문에 앞으로의 날짜가 있으면 모델 판단만으로는 건너뛰지 않는다
-        if CHECK_DEADLINE and draft.get("ended") is True and not has_upcoming_date(article, published):
+        if CHECK_DEADLINE and not listing and draft.get("ended") is True and not has_upcoming_date(article, published):
             raise SkipArticle("이미 끝난 행사·모집이라 게시하지 않음(작성 단계 판단)")
         deck, feedback = draft, ""
         for review in range(1, 4):  # 편집 1회 + 검사 실패 시 수정 최대 2회
@@ -492,10 +549,11 @@ def write_deck(title: str, article: str, category: str, hint: str = "", publishe
                 request += f"\n\n[검사에서 걸린 문제 — 반드시 고칠 것]\n{feedback}"
             try:
                 deck = _parse(call_text_model(EDITOR_PROMPT, request, max_tokens=8000, model=MODEL))
-                check_deck(deck, article + " " + title, published)
+                check_deck(deck, article + " " + title, published, listing)
                 hashtags = deck.get("hashtags") if isinstance(deck.get("hashtags"), list) else []
                 tags = " ".join("#" + str(t).lstrip("#").replace(" ", "") for t in hashtags[:8])
-                footer = "\n".join(p for p in (DISCLAIMER, tags) if p)
+                disclaimer = listing_disclaimer(listing.get("host")) if listing else DISCLAIMER
+                footer = "\n".join(p for p in (disclaimer, tags) if p)
                 final_caption = f"{str(deck.get('caption') or '').strip()}\n\n{footer}".strip()
                 if len(final_caption) > CAPTION_HARD_MAX:
                     raise ValueError(f"캡션이 고지·해시태그 포함 {len(final_caption)}자(인스타 한도 {CAPTION_HARD_MAX}자) — 본문을 줄일 것")

@@ -441,16 +441,17 @@ async def dash_topics(day_param: str | None = Query(None, alias="date"), pool: i
     window = f"(collected_at.gte.{start},collected_at.lt.{end})"
     selected = sb_get_all(
         "news_items",
-        {"select": "id,category,title,source,url,keyword,published_at", "status": "eq.approved",
+        {"select": "id,category,title,source,url,keyword,published_at,apply_end", "status": "eq.approved",
          "category": ch["category_filter"], "and": window},
     )
     result = []
     for category in ch["categories"]:
         candidates = sb_get(
             "news_items",
-            {"select": "id,title,source,url,keyword,published_at,status", "category": f"eq.{category}",
+            # 공고(디징, 2026-10-31)는 마감 가까운 순, 기사는 최신순. apply_end는 공고에만 있다.
+            {"select": "id,title,source,url,keyword,published_at,apply_end,status", "category": f"eq.{category}",
              "status": "in.(filtered,pending_approval,approved)", "and": window,
-             "order": "published_at.desc.nullslast", "limit": str(max(1, min(pool, 100)))},
+             "order": "apply_end.asc.nullslast,published_at.desc.nullslast", "limit": str(max(1, min(pool, 100)))},
         )
         total = sb_count("news_items", {"category": f"eq.{category}",
                                         "status": "in.(filtered,pending_approval,approved)", "and": window})
@@ -1225,13 +1226,16 @@ async function loadTopics() {
   topicsDay = topicsDay || kstToday();
   const d = await api("/api/dash/topics?date=" + encodeURIComponent(topicsDay));
   const when = s => s ? new Date(s).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit", hour12:false}) : "";
+  // 공고는 게시 시각 대신 마감일과 D-n(KST 오늘 기준)을 보여준다. keyword 칸에는 출처(잡알리오·온통청년 등)가 들어 있다.
+  const due = x => { if (!x.apply_end) return when(x.published_at); const n = Math.round((Date.parse(x.apply_end) - Date.parse(kstToday())) / 864e5); return `마감 ${x.apply_end.slice(5).replace("-", "/")} · D-${n}`; };
   const panels = d.categories.map(c => {
     const picked = c.selected.map(s => `<div class="picked">${stChip("선정", "var(--tint)", "ok")}
       <ul class="news"><li style="padding:0;border:0"><a href="${safeUrl(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>
-      <div class="m"><span>${esc(s.source || "")}</span>${s.keyword ? `<span>#${esc(s.keyword)}</span>` : ""}</div></li></ul></div>`).join("");
+      <div class="m"><span>${esc(s.source || "")}</span>${s.apply_end ? `<span>${esc(due(s))}</span>` : ""}${s.keyword ? `<span>#${esc(s.keyword)}</span>` : ""}</div></li></ul></div>`).join("");
     const pool = c.candidates.filter(x => x.status !== "approved").map(x => `<li><a href="${safeUrl(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>
-      <div class="m"><span>${esc(x.source || "")}</span><span>${esc(when(x.published_at))}</span>${x.keyword ? `<span>#${esc(x.keyword)}</span>` : ""}</div></li>`).join("");
-    return `<div class="panel"><h2>${esc(c.label)}<small>후보 ${fmt(c.total)}건 중 최신 ${c.candidates.length}건</small></h2>
+      <div class="m"><span>${esc(x.source || "")}</span><span>${esc(due(x))}</span>${x.keyword ? `<span>#${esc(x.keyword)}</span>` : ""}</div></li>`).join("");
+    const listing = c.candidates.some(x => x.apply_end);
+    return `<div class="panel"><h2>${esc(c.label)}<small>후보 ${fmt(c.total)}건 중 ${listing ? "마감 가까운" : "최신"} ${c.candidates.length}건</small></h2>
       ${picked || `<p class="muted" style="margin-bottom:8px">선정된 기사가 없어요</p>`}
       ${pool ? `<ul class="news">${pool}</ul>` : `<p class="empty">후보 없음</p>`}</div>`;
   }).join("");
