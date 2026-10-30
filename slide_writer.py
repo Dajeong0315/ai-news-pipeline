@@ -73,6 +73,10 @@ NO_EMOJI_ON_CARDS = config.CHANNEL_CONFIG.get("no_emoji_on_cards", False)  # 카
 PLAN_WORDS = tuple(config.CHANNEL_CONFIG.get("plan_notice_words", ()))  # 원문에 있으면 "예정" 표시가 필요한 말
 PLAN_MARKERS = ("예정", "정부안", "확정 전", "확정되면", "추진", "검토")
 CHECK_DEADLINE = config.CHANNEL_CONFIG.get("check_deadline", False)  # 모집·신청 정보 채널은 마감 지난 기사를 건너뜀
+# 원문에 없으면 쓰면 안 되는 단정(인원 제한·접수 방법 등). 숫자가 없어 숫자 대조로는 못 잡는다(2026-10-30 한남대 박람회 덱).
+CLAIM_WORDS = tuple(config.CHANNEL_CONFIG.get("claim_words", ()))
+CAPTION_CLOSING_WORDS = tuple(config.CHANNEL_CONFIG.get("caption_closing_words", ()))  # 캡션 마지막 줄의 친구 태그·공유 부탁
+_IMAGE_PROMPT_EXAMPLE = "English. A concrete photographic scene"  # 출력 형식 예시 문구. 모델이 그대로 베끼기도 한다
 CAPTION_HARD_MAX = 2200  # 인스타그램 캡션 한도(고지·해시태그 포함)
 
 
@@ -155,6 +159,10 @@ if BANMAL:
     EDITOR_PROMPT = EDITOR_PROMPT.replace(
         '3. 어감: 모든 문장 끝을 해요체("~예요", "~해요", "~죠", "~어요")로 통일한다.', f"3. 어감: {config.CHANNEL_CONFIG['editor_tone']}"
     ).replace("친구에게 설명하듯 쉽고 담백하게.", "단톡방에서 정보 챙겨주는 친구가 말하듯 짧고 정확하게.")
+if CAPTION_CLOSING_WORDS:  # 편집장이 캡션을 다듬다 마지막 줄을 지운다(2026-10-30 인천 박람회 덱 3회 실패)
+    EDITOR_PROMPT = EDITOR_PROMPT.replace("\n\n출력:", (
+        "\n5. 캡션: 마지막 줄은 친구 태그·공유를 부탁하는 한마디로 끝낸다(예: \"같이 갈 친구 태그해\", "
+        "\"이거 필요한 친구한테 보내줘\"). 신청 방법·주의할 점 줄 뒤에 둔다.\n\n출력:"))
 # 반말 채널은 끝맺음이 다양해 허용 목록 대신 기사체·합쇼체 끝맺음만 막는다.
 _ARTICLE_END_RE = re.compile(r"(습니다|습니까|었다|았다|했다|였다|이다|한다|된다|있다|없다|보인다)[.!?…]*$")
 
@@ -197,6 +205,11 @@ def check_facts(text: str, article: str, where: str) -> None:
     for num, unit in _UNIT_NUMBER_RE.findall(text):
         if f"{num}{unit}" not in compact:
             raise ValueError(f"{where} 원문에 없는 수치 {num}{unit}(원문 표기 그대로 쓸 것): {text!r}")
+    compact_text = re.sub(r"\s+", "", text)
+    for word in CLAIM_WORDS:
+        key = re.sub(r"\s+", "", word)
+        if key in compact_text and key not in compact:
+            raise ValueError(f"{where} 원문에 없는 내용 {word!r}(기사에 나온 것만 쓸 것): {text!r}")
 
 
 def check_plan_notice(deck: dict, article: str) -> None:
@@ -209,6 +222,29 @@ def check_plan_notice(deck: dict, article: str) -> None:
         raise ValueError(f"원문에 확정 전 표현({', '.join(words[:3])})이 있는데 카드·캡션에 '예정'·'정부안' 같은 표시가 없음")
 
 
+def _guess_date(m: int, d: int, today: date) -> date:
+    """연도 없는 월·일을 오늘에서 가까운 해로 푼다. 없는 날짜(2월 30일 등)면 ValueError."""
+    guess = date(today.year, m, d)
+    if (today - guess).days > 180:  # 연말에 쓴 "1월 15일"은 내년
+        guess = date(today.year + 1, m, d)
+    elif (guess - today).days > 180:  # 연초에 쓴 "12월 20일"은 작년
+        guess = date(today.year - 1, m, d)
+    return guess
+
+
+def has_upcoming_date(article: str, today: date | None = None) -> bool:
+    """원문에 오늘 이후 날짜가 하나라도 있으면 아직 안 끝난 모집·행사일 수 있다.
+    작성 모델의 "ended" 판단은 시도마다 흔들려서(2026-10-30 접수 전인 용인 청년기본소득을 끝났다고 봄) 이걸로 받친다."""
+    today = today or datetime.now(KST).date()
+    for m, d in _article_dates(article):
+        try:
+            if _guess_date(m, d, today) >= today:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def check_deadline(caption: str, today: date | None = None) -> None:
     """캡션의 기간·마감 줄 날짜가 모두 오늘보다 앞이면 이미 끝난 모집이다. 다시 써도 소용없으니 기사를 건너뛴다."""
     today = today or datetime.now(KST).date()
@@ -218,15 +254,7 @@ def check_deadline(caption: str, today: date | None = None) -> None:
             continue
         for y, m, d in _YMD_RE.findall(line):
             try:
-                if y:
-                    found.append(date(int(y), int(m), int(d)))
-                    continue
-                guess = date(today.year, int(m), int(d))
-                if (today - guess).days > 180:  # 연말에 쓴 "1월 15일"은 내년
-                    guess = date(today.year + 1, int(m), int(d))
-                elif (guess - today).days > 180:  # 연초에 쓴 "12월 20일"은 작년
-                    guess = date(today.year - 1, int(m), int(d))
-                found.append(guess)
+                found.append(date(int(y), int(m), int(d)) if y else _guess_date(int(m), int(d), today))
             except ValueError:
                 continue
     if found and max(found) < today:
@@ -302,6 +330,11 @@ def check_deck(deck: dict, article: str) -> None:
     if CHECK_CAPTION:
         check_caption(deck.get("caption"), article_numbers)
         check_facts(deck["caption"], article, "캡션")
+    if CAPTION_CLOSING_WORDS:
+        lines = [line for line in str(deck.get("caption") or "").splitlines() if line.strip()]
+        last = lines[-1] if lines else ""
+        if not any(w in last for w in CAPTION_CLOSING_WORDS):
+            raise ValueError(f"캡션 마지막 줄이 친구 태그·공유 부탁이 아님({'/'.join(CAPTION_CLOSING_WORDS)} 중 하나를 넣을 것): {last!r}")
     check_plan_notice(deck, article)
     if CHECK_DEADLINE:
         check_deadline(str(deck.get("caption") or ""))
@@ -389,6 +422,9 @@ def write_deck(title: str, article: str, category: str, hint: str = "") -> dict:
             last_error = e
             print(f"[slide_writer] 시도 {attempt}/{MAX_ATTEMPTS} 초안 파싱 실패: {e}", file=sys.stderr)
             continue
+        # 지난 행사 결과 기사 등. 다시 써도 소용없다. 원문에 앞으로의 날짜가 있으면 모델 판단만으로는 건너뛰지 않는다
+        if CHECK_DEADLINE and draft.get("ended") is True and not has_upcoming_date(article):
+            raise SkipArticle("이미 끝난 행사·모집이라 게시하지 않음(작성 단계 판단)")
         deck, feedback = draft, ""
         for review in range(1, 4):  # 편집 1회 + 검사 실패 시 수정 최대 2회
             request = f"{source}\n\n[슬라이드 초안]\n{json.dumps(deck, ensure_ascii=False)}"
@@ -411,7 +447,9 @@ def write_deck(title: str, article: str, category: str, hint: str = "") -> dict:
                 print(f"[slide_writer] 시도 {attempt}/{MAX_ATTEMPTS} 편집 {review}회차 실패: {e}", file=sys.stderr)
                 continue
             deck["caption"] = final_caption
-            deck.setdefault("image_prompt", draft.get("image_prompt"))
+            # 예시 문구를 베낀 값은 버린다 → 없으면 기사 제목으로 배경을 만든다(2026-10-30 주제와 무관한 책상 사진)
+            deck["image_prompt"] = next((p for p in (deck.get("image_prompt"), draft.get("image_prompt"))
+                                         if isinstance(p, str) and p.strip() and not p.startswith(_IMAGE_PROMPT_EXAMPLE)), None)
             deck["props"] = clean_props(deck.get("props") or draft.get("props"), article + " " + title)
             return deck
     raise RuntimeError(f"슬라이드 생성 {MAX_ATTEMPTS}회 실패: {last_error}")

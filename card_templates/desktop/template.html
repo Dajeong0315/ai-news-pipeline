@@ -39,10 +39,12 @@
   .subtitle { margin-top: 30px; font-size: 36px; font-weight: 600; color: #333; }
   .deco .list { z-index: 2; right: 56px; top: 930px; width: 380px; background: #fff; border-radius: 22px; padding: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.16); font-size: 29px; font-weight: 500; }
   .list div { padding: 14px 18px; border-radius: 12px; } .list div:first-child { background: var(--sel); }
-  .deco .folder { width: 150px; text-align: center; font-size: 26px; font-weight: 700; }
+  .deco .folder { width: 150px; text-align: center; font-size: 26px; font-weight: 700; line-height: 1.3;
+                  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   .folder::before { content: ""; display: block; width: 150px; height: 112px; margin-bottom: 8px; border-radius: 12px 12px 14px 14px;
                     background: linear-gradient(180deg, #8EC5FF, #4E9CF5); box-shadow: inset 0 18px 0 -6px #A9D3FF; }
-  .deco .f1 { right: 180px; top: 640px; } .deco .f2 { right: 70px; top: 770px; }
+  /* f1 라벨이 두 줄로 꺾여도 f2 아이콘에 가리지 않게 f1을 올려 둔다(2026-10-30 "채용박람회" 라벨 잘림) */
+  .deco .f1 { right: 180px; top: 560px; } .deco .f2 { right: 70px; top: 770px; }
   .deco .swipe { right: 72px; bottom: 70px; font-size: 32px; font-weight: 800; }
 
   /* 속지: 창 하나가 가운데 */
