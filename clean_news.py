@@ -28,13 +28,18 @@ PAGE_SIZE = 1000
 
 
 def fetch_collected() -> list[dict]:
-    """status='collected' 항목 전체를 페이지네이션으로 가져온다.
+    """status='collected' 항목을 페이지네이션으로 가져온다.
 
     PostgREST(Supabase)는 기본적으로 한 번에 최대 1000건만 반환하므로,
     range()로 나눠 끝까지 순회하지 않으면 카테고리별로 수집 순서상 뒤에
     저장된 항목(예: policy_industry)이 통째로 누락될 수 있다.
+
+    최근 MAX_AGE_HOURS×2 안에 수집된 행만 본다. 정제를 한 번도 통과하지 못한 옛 행이
+    status='collected'로 계속 남아(2026-10-30 기준 약 4만 건) 매일 전부 다시 읽고 있었는데,
+    어차피 최신성 필터(age_ok)에서 전부 떨어지는 행들이다.
     """
     client = get_client()
+    since = (datetime.now(timezone.utc) - timedelta(hours=config.MAX_AGE_HOURS * 2)).isoformat()
     rows: list[dict] = []
     offset = 0
     while True:
@@ -42,6 +47,8 @@ def fetch_collected() -> list[dict]:
             client.table("news_items")
             .select("id,title,summary,category,published_at,collected_at")
             .eq("status", "collected")
+            .gte("collected_at", since)
+            .order("id")
             .range(offset, offset + PAGE_SIZE - 1)
             .execute()
         )

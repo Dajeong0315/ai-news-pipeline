@@ -31,6 +31,8 @@ MAX_BACKLOG_DAYS = int(os.environ.get("MAX_BACKLOG_DAYS", 3))
 SAFE_DAILY_CLOUDFLARE_CALLS = int(os.environ.get("SAFE_DAILY_CLOUDFLARE_CALLS", 12))
 
 MAX_AGE_HOURS = float(os.environ.get("MAX_AGE_HOURS", 24))
+# 검색어당 저장할 최신 기사 수. 자동 선정은 카테고리당 20건만 보므로 50개 검색어 × 10이면 충분(2026-10-30).
+COLLECT_MAX_PER_KEYWORD = int(os.environ.get("COLLECT_MAX_PER_KEYWORD", 10))
 MIN_LENGTH = int(os.environ.get("MIN_LENGTH", 50))
 DEDUP_SIMILARITY_THRESHOLD = float(os.environ.get("DEDUP_SIMILARITY_THRESHOLD", 70))
 TITLE_MAX_CHARS = int(os.environ.get("TITLE_MAX_CHARS", 15))

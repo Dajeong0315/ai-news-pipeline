@@ -9,7 +9,7 @@ import logging
 import re
 import time
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import feedparser
 
@@ -72,9 +72,20 @@ def entry_to_row(entry, category: str, keyword: str) -> dict | None:
     }
 
 
-def collect_all() -> list[dict]:
+def is_recent(row: dict, cutoff: datetime) -> bool:
+    # 발행 시각이 없는 기사는 정제 단계가 수집 시각으로 판단하므로 남겨둔다.
+    return not row["published_at"] or datetime.fromisoformat(row["published_at"]) >= cutoff
+
+
+def collect_all() -> tuple[list[dict], int]:
+    """검색어마다 RSS 기사(보통 100건 안팎) 중 최근 MAX_AGE_HOURS 이내 기사만, 최신순
+    COLLECT_MAX_PER_KEYWORD건까지 남긴다. 2026-10-29 측정: 하루 4,489건을 받아 2,597건을
+    저장했지만 28%는 정제에서 바로 버려지는 옛 기사였고, 자동 선정이 보는 후보는
+    카테고리당 20건뿐이라 나머지는 쓰이지 않고 쌓이기만 했다."""
     keywords_by_category = load_keywords()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=config.MAX_AGE_HOURS)
     rows = []
+    fetched_total = 0
     for category, keywords in keywords_by_category.items():
         for keyword in keywords:
             try:
@@ -83,15 +94,15 @@ def collect_all() -> list[dict]:
                 log.error("수집 실패 [%s/%s]: %s", category, keyword, e)
                 continue
 
-            count = 0
-            for entry in entries:
-                row = entry_to_row(entry, category, keyword)
-                if row:
-                    rows.append(row)
-                    count += 1
-            log.info("[%s] '%s' -> %d건", category, keyword, count)
+            candidates = [row for entry in entries if (row := entry_to_row(entry, category, keyword))]
+            fetched_total += len(candidates)
+            recent = [row for row in candidates if is_recent(row, cutoff)]
+            recent.sort(key=lambda r: r["published_at"] or "", reverse=True)
+            kept = recent[: config.COLLECT_MAX_PER_KEYWORD]
+            rows.extend(kept)
+            log.info("[%s] '%s' -> %d건 중 최근 %d건, 저장 대상 %d건", category, keyword, len(candidates), len(recent), len(kept))
             time.sleep(REQUEST_DELAY_SEC)
-    return rows
+    return rows, fetched_total
 
 
 def save_rows(rows: list[dict]) -> int:
@@ -118,13 +129,14 @@ def save_rows(rows: list[dict]) -> int:
 def main():
     log.info("뉴스 수집 시작")
     events.record("collect", "started", message="Google News RSS 수집 시작")
-    rows = collect_all()
-    log.info("총 수집 %d건 (중복 URL 포함), Supabase 저장 시도", len(rows))
+    rows, fetched = collect_all()
+    log.info("RSS %d건 중 저장 대상 %d건(최근·검색어당 상한 적용), Supabase 저장 시도", fetched, len(rows))
     saved = save_rows(rows)
     log.info("신규 저장 %d건 완료", saved)
     events.record(
         "collect", "success" if rows else "failed", count=len(rows),
-        message=f"수집 {len(rows):,}건 (신규 저장 {saved:,}건)", detail={"fetched": len(rows), "saved": saved},
+        message=f"수집 {len(rows):,}건 (RSS {fetched:,}건 중, 신규 저장 {saved:,}건)",
+        detail={"fetched": fetched, "kept": len(rows), "saved": saved},
     )
 
 
