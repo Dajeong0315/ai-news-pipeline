@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- notify: 휴대폰 잠금화면. 색 그라데이션 배경화면 + 날짜·큰 시계 + 알림 배너(hook), 아래 굵은 흰 제목.
+     속지는 위에 상태 막대, 내용이 알림 배너로 도착한다. 사진은 쓰지 않는다(2026-10-30 운영자: 흑백 사진 배경이 별로).
+     배경화면 색은 덱 제목으로 팔레트 4개 중 하나를 고른다(같은 덱은 같은 색). (레퍼런스: THICK. DM 표지 알림 배너) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  .slide { color: #fff; font-family: "Pretendard", sans-serif; }
+  .slide .bg, .slide .shade { display: none; }
+  .deco .wall { inset: 0; }
+  .deco .wall::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.35) 100%); }
+
+  /* 상태 막대(속지)와 시계(표지) */
+  .deco .status { top: 34px; left: 70px; right: 70px; display: flex; justify-content: space-between; font-size: 30px; font-weight: 700; }
+  .status .bat { width: 56px; height: 26px; border: 3px solid rgba(255,255,255,.9); border-radius: 8px; position: relative; }
+  .status .bat::after { content: ""; position: absolute; inset: 3px 12px 3px 3px; background: #fff; border-radius: 3px; }
+  .deco .clock { top: 96px; left: 0; right: 0; text-align: center; }
+  .clock small { display: block; font-size: 40px; font-weight: 600; opacity: .9; }
+  .clock b { display: block; font-size: 190px; font-weight: 600; letter-spacing: -.03em; line-height: 1.05; }
+
+  /* 알림 배너 */
+  .banners { display: flex; flex-direction: column; gap: 20px; }
+  .banner { display: flex; gap: 26px; align-items: flex-start; background: rgba(255,255,255,.78); color: #111; border-radius: 42px;
+            padding: 26px 32px; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
+  .banner .app { width: 88px; height: 88px; border-radius: 22px; flex-shrink: 0; display: grid; place-items: center;
+                 background: #111; color: #fff; font-size: 30px; font-weight: 900; letter-spacing: -.04em; }
+  .banner .msg { flex: 1; min-width: 0; }
+  .banner .top { display: flex; justify-content: space-between; font-size: 30px; font-weight: 700; }
+  .banner .top span { color: #6e6e73; font-weight: 500; font-size: 27px; }
+  .banner .txt { margin-top: 6px; font-size: 36px; line-height: 1.42; font-weight: 500; }
+
+  /* 표지 */
+  .deco .stack { top: 380px; left: 60px; right: 60px; }
+  .k-cover .banner { padding: 22px 30px; }
+  .k-cover .content { bottom: 110px; }
+  .k-cover .title { font-size: 92px; }
+  .content { left: 80px; right: 80px; bottom: 120px; }
+  .kicker { display: none; }
+  .series { display: inline-block; font-size: 30px; font-weight: 800; border: 3px solid #fff; border-radius: 40px; padding: 5px 20px; margin-bottom: 20px; }
+  .title { font-size: 100px; font-weight: 800; line-height: 1.2; letter-spacing: -.045em; text-shadow: 0 4px 30px rgba(0,0,0,.18); }
+  h2.title { font-size: 78px; }
+  .subtitle { margin-top: 22px; font-size: 36px; color: rgba(255,255,255,.88); font-weight: 500; }
+
+  /* 속지: 배너가 가운데 */
+  .slide:not(.k-cover):not(.k-closing) .content { top: 50%; bottom: auto; transform: translateY(-50%); }
+  .slide:not(.k-cover) .banner .txt { font-size: 44px; }
+  .slide:not(.k-cover) .banner .top { font-size: 32px; }
+  .banner.big .txt { font-size: 52px !important; font-weight: 700; line-height: 1.34; }
+  .head { font-size: 76px; font-weight: 800; line-height: 1.22; letter-spacing: -.04em; margin-bottom: 44px; }
+  .tag { display: inline-block; font-size: 30px; font-weight: 800; border: 3px solid #fff; border-radius: 40px; padding: 8px 22px; margin-bottom: 30px; }
+  .value { font-size: 250px; font-weight: 800; letter-spacing: -.05em; line-height: 1; margin-bottom: 40px; }
+  .cmp .txt b { font-size: 76px; font-weight: 900; letter-spacing: -.03em; display: block; margin-top: 4px; }
+  .k-closing .content { bottom: 150px; }
+  .k-closing .banners { margin-top: 44px; }
+
+  .foot { left: 80px; right: 80px; bottom: 50px; font-size: 26px; color: rgba(255,255,255,.8); justify-content: center; }
+  .foot .page { display: none; }
+</style></head>
+<body><div id="deck"></div>
+<script>
+(() => {
+  // 흰 글씨가 잘 읽히는 중간~어두운 톤 배경화면(겹친 원형 그라데이션)
+  const WALLS = [
+    "radial-gradient(circle at 18% 12%, #6E8BFF 0, transparent 46%), radial-gradient(circle at 85% 30%, #B45CFF 0, transparent 44%), radial-gradient(circle at 30% 85%, #2BB8F0 0, transparent 50%), #2A2370",
+    "radial-gradient(circle at 15% 15%, #FF8A5B 0, transparent 45%), radial-gradient(circle at 85% 35%, #FF4F8B 0, transparent 45%), radial-gradient(circle at 40% 90%, #8B4DFF 0, transparent 52%), #43174F",
+    "radial-gradient(circle at 20% 15%, #2FD6B5 0, transparent 46%), radial-gradient(circle at 85% 40%, #3AA0FF 0, transparent 46%), radial-gradient(circle at 25% 90%, #1E7F6E 0, transparent 52%), #0E3A47",
+    "radial-gradient(circle at 80% 12%, #FFB347 0, transparent 44%), radial-gradient(circle at 15% 45%, #FF6B4A 0, transparent 46%), radial-gradient(circle at 70% 90%, #6A5ACD 0, transparent 52%), #3B2340",
+  ];
+  const hash = (s) => [...String(s || "")].reduce((h, c) => (h * 31 + c.codePointAt(0)) >>> 0, 7);
+  const initial = (b) => (b.wordmark || b.name || "").slice(0, 2);
+  const banner = (ctx, msg, opts = {}) => `<div class="banner ${opts.cls || ""}"><span class="app">${ctx.esc(initial(ctx.brand))}</span>
+    <div class="msg"><div class="top">${ctx.esc(opts.from || ctx.brand.name)}<span>${opts.time || "지금"}</span></div>
+    <div class="txt">${opts.html || ctx.text(msg)}</div></div></div>`;
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const time = `${now.getHours() % 12 || 12}:${pad(now.getMinutes())}`;
+  const today = `${now.getMonth() + 1}월 ${now.getDate()}일 ${"일월화수목금토"[now.getDay()]}요일`;
+  window.TEMPLATE = {
+    deco(slide, ctx) {
+      const wall = `<div class="wall" style="background:${WALLS[hash(ctx.job.slides[0].title) % WALLS.length]}"></div>`;
+      if (slide.kind !== "cover") return wall + `<div class="status"><span>${time}</span><span class="bat"></span></div>`;
+      const hook = slide.hook && slide.hook.length ? slide.hook : (slide.subtitle ? [slide.subtitle] : []);
+      const times = ["지금", "1분 전", "3분 전"];
+      return wall + `<div class="clock"><small>${today}</small><b>${time}</b></div>` +
+        `<div class="stack banners">${hook.map((h, i) => banner(ctx, h, { time: times[i] || "" })).join("")}</div>`;
+    },
+    content(slide, ctx, base) {
+      const tag = slide.kicker ? `<p class="tag">${ctx.esc(slide.kicker)}</p>` : "";
+      const head = slide.title ? `<h2 class="head">${ctx.text(slide.title)}</h2>` : "";
+      switch (slide.kind) {
+        case "cover":
+          return `<p class="series">${ctx.esc(slide.kicker || ctx.brand.series || ctx.brand.name)}</p><h1 class="title">${ctx.text(slide.title)}</h1>` +
+            (slide.hook && slide.hook.length && slide.subtitle ? `<p class="subtitle">${ctx.text(slide.subtitle)}</p>` : "");
+        case "point":
+          return tag + head + `<div class="banners">${banner(ctx, slide.body)}</div>`;
+        case "list":
+          return tag + head + `<div class="banners">${(slide.items || []).map((it, i) => banner(ctx, it, { time: i ? `${i}분 전` : "지금" })).join("")}</div>`;
+        case "compare":
+          return tag + head + `<div class="banners">${(slide.items || []).map((it) =>
+            banner(ctx, "", { cls: "cmp", html: `${ctx.text(it.label)}<b>${ctx.text(it.value)}</b>` })).join("")}</div>` +
+            (slide.note ? `<div class="banners" style="margin-top:20px">${banner(ctx, slide.note)}</div>` : "");
+        case "stat":
+          return tag + `<p class="value">${ctx.text(slide.value)}</p><div class="banners">${banner(ctx, slide.label, { cls: "big" })}${slide.note ? banner(ctx, slide.note) : ""}</div>`;
+        case "quote":
+          return `<div class="banners">${banner(ctx, slide.quote, { cls: "big", from: slide.source || ctx.brand.name })}</div>`;
+        case "closing":
+          return tag + `<h1 class="title">${ctx.text(slide.title)}</h1>` + (slide.body ? `<div class="banners">${banner(ctx, slide.body)}</div>` : "");
+        default:
+          return base(slide);
+      }
+    },
+  };
+})();
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>

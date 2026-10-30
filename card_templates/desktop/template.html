@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- desktop: 밝은 회색 바탕에 컴퓨터 화면 UI 콜라주. 표지는 메뉴 막대 + 복사/붙여넣기 팝업 + 마지막 줄을 블록 선택한
+     큰 검은 제목 + 사진 창 + 폴더·목록(hook), 속지는 내용이 창·대화상자로 뜬다. 마지막 장은 "저장할까요?" 대화상자.
+     특정 회사 로고·아이콘은 쓰지 않고 일반적인 창 모양만 흉내 낸다. (레퍼런스: iOS Core·What's inside this folder·AirDrop 콜라주) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --sel: #B4D5FE; --blue: #2F7CF6; --ink: #111; --line: #d9d9de; }
+  .slide { background: #E9E9EC; color: var(--ink); font-family: "Pretendard", sans-serif; }
+  .slide .bg { display: none; }
+  .slide .shade { display: none; }
+
+  /* 메뉴 막대 */
+  .deco .menubar { top: 0; left: 0; right: 0; height: 58px; padding: 0 34px; display: flex; align-items: center; gap: 30px;
+                   background: rgba(255,255,255,.72); font-size: 25px; font-weight: 500; }
+  .menubar b { font-weight: 800; }
+  .menubar .right { margin-left: auto; display: flex; gap: 26px; align-items: center; }
+  .menubar .dot { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #333; }
+
+  /* 창 */
+  .win { background: #fff; border-radius: 26px; box-shadow: 0 24px 60px rgba(0,0,0,.16), 0 0 0 1px rgba(0,0,0,.06); overflow: hidden; }
+  .win .bar { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 24px; border-bottom: 1px solid var(--line); background: #f6f6f8; font-size: 26px; color: #555; font-weight: 600; }
+  .win .bar i { width: 20px; height: 20px; border-radius: 50%; background: #FF5F57; } .win .bar i:nth-child(2) { background: #FEBC2E; } .win .bar i:nth-child(3) { background: #28C840; }
+  .win .bar span { margin-left: 14px; }
+  .win .in { padding: 48px 52px 54px; }
+
+  /* 표지 */
+  .content { left: 72px; right: 72px; top: 150px; }
+  .k-cover .kicker { display: none; }
+  .popup { display: inline-flex; background: #fff; border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.14); font-size: 30px; font-weight: 500; margin-bottom: 34px; }
+  .popup span { padding: 16px 28px; border-left: 1px solid var(--line); } .popup span:first-child { border-left: 0; }
+  .title { font-size: 120px; font-weight: 900; line-height: 1.12; letter-spacing: -.05em; }
+  .title .sel { background: var(--sel); position: relative; padding: 0 6px; margin-left: -6px; }
+  .title .sel::before { content: ""; position: absolute; left: -4px; top: -6px; bottom: -6px; width: 6px; background: var(--blue); }
+  .title .sel::after { content: ""; position: absolute; left: -15px; top: -26px; width: 28px; height: 28px; border-radius: 50%; background: var(--blue); }
+  .photo { margin-top: 50px; width: 620px; }
+  .photo img { display: block; width: 100%; height: 500px; object-fit: cover; }
+  .subtitle { margin-top: 30px; font-size: 36px; font-weight: 600; color: #333; }
+  .deco .list { z-index: 2; right: 56px; top: 930px; width: 380px; background: #fff; border-radius: 22px; padding: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.16); font-size: 29px; font-weight: 500; }
+  .list div { padding: 14px 18px; border-radius: 12px; } .list div:first-child { background: var(--sel); }
+  .deco .folder { width: 150px; text-align: center; font-size: 26px; font-weight: 700; }
+  .folder::before { content: ""; display: block; width: 150px; height: 112px; margin-bottom: 8px; border-radius: 12px 12px 14px 14px;
+                    background: linear-gradient(180deg, #8EC5FF, #4E9CF5); box-shadow: inset 0 18px 0 -6px #A9D3FF; }
+  .deco .f1 { right: 180px; top: 640px; } .deco .f2 { right: 70px; top: 770px; }
+  .deco .swipe { right: 72px; bottom: 70px; font-size: 32px; font-weight: 800; }
+
+  /* 속지: 창 하나가 가운데 */
+  .slide:not(.k-cover) .content { top: 50%; left: 60px; right: 60px; transform: translateY(-50%); }
+  .slide:not(.k-cover) .win .in { padding: 60px 64px 66px; }
+  .slide:not(.k-cover) .win .bar { height: 76px; font-size: 30px; } .slide:not(.k-cover) .win .bar i { width: 24px; height: 24px; }
+  h2.title, .wtitle { font-size: 84px; font-weight: 900; line-height: 1.2; letter-spacing: -.04em; }
+  .body { margin-top: 34px; font-size: 48px; line-height: 1.6; font-weight: 500; color: #333; }
+  .rows { margin-top: 18px; }
+  .rows li { display: flex; align-items: center; gap: 28px; padding: 28px 6px; border-bottom: 1px solid var(--line); font-size: 48px; font-weight: 600; }
+  .rows li:last-child { border-bottom: 0; }
+  .rows li::before { content: ""; width: 64px; height: 48px; flex-shrink: 0; border-radius: 8px; background: linear-gradient(180deg, #8EC5FF, #4E9CF5); box-shadow: inset 0 9px 0 -3px #A9D3FF; }
+  .dialog { width: 860px; margin: 0 auto; text-align: center; background: rgba(255,255,255,.96); border-radius: 40px; padding: 60px 56px 46px;
+            box-shadow: 0 30px 70px rgba(0,0,0,.2); }
+  .dialog .icon { width: 120px; height: 120px; margin: 0 auto 30px; border-radius: 28px; display: grid; place-items: center;
+                  background: linear-gradient(140deg, #3D7BFF, #8A5CFF); color: #fff; font-size: 40px; font-weight: 900; }
+  .dialog .value { font-size: 240px; font-weight: 900; letter-spacing: -.05em; line-height: 1; color: var(--blue); }
+  .dialog .label { margin-top: 24px; font-size: 54px; font-weight: 700; line-height: 1.35; }
+  .dialog .note, .dialog .body { margin-top: 22px; font-size: 40px; color: #666; font-weight: 500; line-height: 1.5; }
+  .dialog .wtitle { font-size: 72px; }
+  .dialog .quote { font-size: 68px; font-weight: 800; line-height: 1.32; letter-spacing: -.03em; }
+  .dialog .from { font-size: 30px; color: #888; margin-bottom: 20px; font-weight: 600; }
+  .btns { margin-top: 44px; display: flex; flex-direction: column; gap: 16px; }
+  .btns.row { flex-direction: row; } .btns.row span { flex: 1; }
+  .btns span { padding: 28px; border-radius: 24px; font-size: 40px; font-weight: 700; background: #E5E5EA; color: #111; }
+  .btns .primary { background: var(--blue); color: #fff; } .btns .soft { background: #FBD5DD; color: #B4233F; }
+  .cmp { display: flex; gap: 24px; margin-top: 30px; }
+  .cmp div { flex: 1; border: 2px solid var(--line); border-radius: 22px; padding: 30px; }
+  .cmp small { display: block; font-size: 40px; color: #666; font-weight: 600; }
+  .cmp b { display: block; margin-top: 8px; font-size: 96px; font-weight: 900; letter-spacing: -.04em; }
+  .cmp div:last-child { border-color: var(--blue); } .cmp div:last-child b { color: var(--blue); }
+
+  .deco .dock { left: 50%; transform: translateX(-50%); bottom: 34px; display: flex; gap: 16px; padding: 14px 18px; border-radius: 30px; background: rgba(255,255,255,.6); box-shadow: 0 0 0 1px rgba(0,0,0,.05); }
+  .dock i { width: 62px; height: 62px; border-radius: 16px; }
+  .k-cover .deco .dock { display: none; }
+  .slide .foot { display: none; }
+</style></head>
+<body><div id="deck"></div>
+<script>
+(() => {
+  const DOCK = ["#5AC8FA", "#FF9F0A", "#34C759", "#AF52DE", "#FF375F", "#8E8E93", "#0A84FF"];
+  const now = new Date();
+  const days = "일월화수목금토";
+  const initial = (b) => (b.wordmark || b.name || "").slice(0, 2);
+  const win = (ctx, name, inner) => `<div class="win"><div class="bar"><i></i><i></i><i></i><span>${ctx.esc(name)}</span></div><div class="in">${inner}</div></div>`;
+  window.TEMPLATE = {
+    deco(slide, ctx) {
+      const b = ctx.brand;
+      let html = `<div class="menubar"><b>${ctx.esc(b.wordmark || b.name)}</b><span>파일</span><span>편집</span><span>보기</span><span>윈도우</span>
+        <span class="right"><span class="dot"></span>${now.getMonth() + 1}월 ${now.getDate()}일 (${days[now.getDay()]})</span></div>`;
+      html += `<div class="dock">${DOCK.map((c) => `<i style="background:${c}"></i>`).join("")}</div>`;
+      if (slide.kind === "cover") {
+        const hook = slide.hook && slide.hook.length ? slide.hook : [];
+        html += `<div class="folder f1">${ctx.esc(slide.kicker || b.series || "")}</div><div class="folder f2">${ctx.esc((ctx.props.folders || [])[1] || "최종_진짜최종")}</div>`;
+        if (hook.length) html += `<div class="list">${hook.map((h) => `<div>${ctx.esc(h)}</div>`).join("")}</div>`;
+        html += `<div class="swipe">넘겨보기 &gt;</div>`;
+      }
+      return html;
+    },
+    content(slide, ctx, base) {
+      const name = slide.kicker || ctx.brand.series || ctx.brand.name;
+      const lines = (s) => String(s || "").split("\n");
+      switch (slide.kind) {
+        case "cover": {
+          // 마지막 줄을 블록 선택한 것처럼(파란 하이라이트 + 커서)
+          const ls = lines(slide.title);
+          const title = ls.map((l, i) => (i === ls.length - 1 ? `<span class="sel">${ctx.esc(l)}</span>` : ctx.esc(l))).join("<br>");
+          return `<div class="popup"><span>잘라내기</span><span>복사</span><span>붙여넣기</span><span>바꾸기… ▸</span></div>
+            <h1 class="title">${title}</h1>
+            <div class="win photo"><div class="bar"><i></i><i></i><i></i><span>${ctx.esc(name)}</span></div><img src="${ctx.esc(ctx.job.background)}"></div>` +
+            (slide.subtitle ? `<p class="subtitle">${ctx.text(slide.subtitle)}</p>` : "");
+        }
+        case "point":
+          return win(ctx, name, (slide.title ? `<h2 class="title">${ctx.text(slide.title)}</h2>` : "") + `<p class="body">${ctx.text(slide.body)}</p>`);
+        case "list":
+          return win(ctx, name, (slide.title ? `<h2 class="title">${ctx.text(slide.title)}</h2>` : "") +
+            `<ul class="rows">${(slide.items || []).map((it) => `<li>${ctx.text(it)}</li>`).join("")}</ul>`);
+        case "compare":
+          return win(ctx, name, (slide.title ? `<h2 class="title">${ctx.text(slide.title)}</h2>` : "") +
+            `<div class="cmp">${(slide.items || []).map((it) => `<div><small>${ctx.text(it.label)}</small><b>${ctx.text(it.value)}</b></div>`).join("")}</div>` +
+            (slide.note ? `<p class="body">${ctx.text(slide.note)}</p>` : ""));
+        case "stat":
+          return `<div class="dialog"><div class="icon">${ctx.esc(initial(ctx.brand))}</div><p class="value">${ctx.text(slide.value)}</p>
+            <p class="label">${ctx.text(slide.label)}</p>${slide.note ? `<p class="note">${ctx.text(slide.note)}</p>` : ""}
+            <div class="btns"><span class="primary">확인</span></div></div>`;
+        case "quote":
+          return `<div class="dialog"><p class="from">${ctx.esc(slide.source || ctx.brand.name)} 님이 공유함</p>
+            <p class="quote">${ctx.text(slide.quote)}</p><div class="btns row"><span>거절</span><span class="primary">수락</span></div></div>`;
+        case "closing":
+          return `<div class="dialog"><div class="icon">${ctx.esc(initial(ctx.brand))}</div><h2 class="title wtitle">${ctx.text(slide.title)}</h2>
+            ${slide.body ? `<p class="body">${ctx.text(slide.body)}</p>` : ""}
+            <div class="btns"><span class="primary">${ctx.esc((ctx.props.closing_buttons || [])[1] || "게시물 저장")}</span><span class="soft">${ctx.esc((ctx.props.closing_buttons || [])[0] || "저장 안 함")}</span><span>취소</span></div></div>`;
+        default:
+          return base(slide);
+      }
+    },
+  };
+})();
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>

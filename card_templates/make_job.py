@@ -29,7 +29,8 @@ def build_job(template: str, deck_path: Path, brand_path: Path, background: Path
     deck = json.loads(deck_path.read_text(encoding="utf-8"))
     brand = json.loads(brand_path.read_text(encoding="utf-8"))
     brand["mascots"] = {k: str((brand_path.parent / v).resolve()) for k, v in brand.get("mascots", {}).items()}
-    return {"template": template, "mascot": mascot, "brand": brand, "background": str(background.resolve()), "slides": deck["slides"]}
+    return {"template": template, "mascot": mascot, "brand": brand, "background": str(background.resolve()),
+            "slides": deck["slides"], "props": deck.get("props") or {}}
 
 
 def contact_sheet(out_dir: Path, cols: int = 3, width: int = 360) -> Path:

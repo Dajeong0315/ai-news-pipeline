@@ -71,7 +71,8 @@
     };
     const html = job.slides.map((slide, idx) => {
       const i = idx + 1;
-      const ctx = { i, n, brand, job, mascot: mascot(slide, i), doodles: DOODLES, esc, text, last: i === n };
+      // props: 덱마다 내용에 맞춰 새로 짓는 장식 문구(창 제목·버튼·필기체 등). 없으면 템플릿 기본값.
+      const ctx = { i, n, brand, job, props: job.props || {}, mascot: mascot(slide, i), doodles: DOODLES, esc, text, last: i === n };
       const variant = T.variant ? T.variant(slide, ctx) : "";
       const deco = T.deco ? T.deco(slide, ctx) : "";
       const inner = T.content ? T.content(slide, ctx, content) : content(slide);

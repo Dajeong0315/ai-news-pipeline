@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- chat: 검은 바탕 메신저 대화 화면. 표지는 말풍선(hook) + 입력 중 표시 + 입력창 위에 형광 태그·큰 형광 제목,
+     속지는 질문(내 말풍선=제목)과 답(상대 말풍선=본문)으로 읽힌다. 사진은 쓰지 않는다. (레퍼런스: MSMG 메신저 표지) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --neon: #E4FF3A; --me: #1F8BFF; --them: #2C2C2E; --muted: #8E8E93; }
+  .slide { background: #000; color: #fff; font-family: "Pretendard", sans-serif; }
+  .slide .bg, .slide .shade { display: none; }
+  .brandmark { top: 70px; left: 72px; font-size: 40px; font-weight: 900; line-height: .92; letter-spacing: -.03em; color: var(--neon); }
+
+  /* 말풍선 */
+  .bubbles { display: flex; flex-direction: column; gap: 22px; }
+  .bubble { position: relative; max-width: 78%; padding: 24px 34px; border-radius: 38px; font-size: 40px; line-height: 1.42; font-weight: 500; }
+  .bubble.me { align-self: flex-end; background: var(--me); border-bottom-right-radius: 12px; }
+  .bubble.them { align-self: flex-start; background: var(--them); border-bottom-left-radius: 12px; }
+  .sender { align-self: flex-start; margin: 6px 0 -12px 18px; font-size: 28px; color: var(--muted); font-weight: 600; }
+  .typing { align-self: flex-start; background: var(--them); border-radius: 40px; padding: 26px 32px; display: flex; gap: 14px; }
+  .typing i { width: 22px; height: 22px; border-radius: 50%; background: #8E8E93; }
+  .typing i:nth-child(2) { opacity: .75; } .typing i:nth-child(3) { opacity: .5; }
+  .readmark { align-self: flex-end; margin-top: -10px; font-size: 26px; color: var(--muted); }
+
+  /* 표지: 위는 대화, 아래는 태그·제목 */
+  .deco .chatbox { top: 190px; left: 72px; right: 72px; }
+  .inputbar { display: flex; align-items: center; gap: 24px; margin-bottom: 64px; }
+  .inputbar .ico { width: 70px; height: 70px; border-radius: 50%; border: 4px solid #6c6c70; flex-shrink: 0; }
+  .inputbar .field { flex: 1; height: 76px; border: 3px solid #48484a; border-radius: 40px; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; font-size: 32px; color: #6c6c70; }
+  .inputbar .field b { width: 46px; height: 46px; border-radius: 50%; background: #6c6c70; }
+
+  .content { left: 72px; right: 72px; bottom: 130px; }
+  .kicker { display: inline-block; position: relative; background: var(--neon); color: #000; font-size: 34px; font-weight: 800; padding: 10px 22px; border-radius: 10px; margin-bottom: 30px; }
+  .kicker::after { content: ""; position: absolute; left: 22px; bottom: -16px; border: 9px solid transparent; border-top: 10px solid var(--neon); border-left-width: 2px; }
+  .title { font-size: 104px; font-weight: 900; line-height: 1.16; letter-spacing: -.045em; color: var(--neon); }
+  .subtitle { margin-top: 28px; font-size: 38px; color: var(--neon); font-weight: 500; }
+
+  /* 속지 */
+  /* 속지는 대화를 세로 가운데에. 위에 날짜 칩을 둬 실제 대화방처럼 */
+  .slide:not(.k-cover):not(.k-closing) .content { top: 50%; bottom: auto; transform: translateY(-50%); }
+  .slide:not(.k-cover) .content .bubble { font-size: 50px; padding: 28px 40px; }
+  .bubble.big { font-size: 66px !important; font-weight: 700; line-height: 1.3; }
+  .daychip { align-self: center; margin-bottom: 14px; font-size: 28px; color: var(--muted); font-weight: 600; }
+  .value { font-size: 230px; font-weight: 900; letter-spacing: -.05em; line-height: 1; color: var(--neon); }
+  .label { margin-top: 30px; font-size: 54px; font-weight: 700; line-height: 1.35; }
+  .k-stat .bubbles { margin-top: 44px; }
+  .cmp-row { display: flex; align-items: baseline; gap: 24px; }
+  .cmp-row .v { font-size: 64px; font-weight: 900; color: var(--neon); letter-spacing: -.03em; }
+  .note-line { margin-top: 34px; font-size: 32px; color: var(--muted); }
+  .k-closing .body { margin-top: 34px; font-size: 40px; line-height: 1.55; color: #d1d1d6; font-weight: 500; }
+  .k-closing .title { font-size: 92px; }
+
+  .foot { left: 72px; right: 72px; bottom: 56px; font-size: 28px; color: var(--muted); font-weight: 600; }
+</style></head>
+<body><div id="deck"></div>
+<script>
+(() => {
+  const bubble = (ctx, side, s, extra = "") => `<div class="bubble ${side} ${extra}">${ctx.text(s)}</div>`;
+  const input = (ctx, placeholder) => `<div class="inputbar"><span class="ico"></span><span class="ico"></span>
+    <span class="field">${ctx.esc(placeholder)}<b></b></span></div>`;
+  window.TEMPLATE = {
+    deco(slide, ctx) {
+      let html = `<div class="brandmark">${ctx.esc(ctx.brand.wordmark || ctx.brand.name)}</div>`;
+      if (slide.kind === "cover") {
+        const hook = slide.hook && slide.hook.length ? slide.hook : (slide.subtitle ? [slide.subtitle] : []);
+        // 첫 줄은 내가 보낸 말, 다음 줄부터 번갈아 답한다. 마지막에 상대가 입력 중.
+        html += `<div class="chatbox bubbles">${hook.map((h, i) => bubble(ctx, i % 2 ? "them" : "me", h)).join("")}
+          <div class="typing"><i></i><i></i><i></i></div></div>`;
+      }
+      if (slide.kind === "closing") {
+        html += `<div class="chatbox bubbles">${bubble(ctx, "me", ctx.props.ask || "그래서 한 줄로 요약하면?")}<div class="typing"><i></i><i></i><i></i></div></div>`;
+      }
+      return html;
+    },
+    content(slide, ctx, base) {
+      const k = slide.kicker ? `<p class="kicker">${ctx.esc(slide.kicker)}</p>` : "";
+      const from = `<span class="sender">${ctx.esc(ctx.brand.name)}</span>`;
+      const day = `<span class="daychip">오늘</span>`;
+      switch (slide.kind) {
+        case "point":
+          return k + `<div class="bubbles">${day}${slide.title ? bubble(ctx, "me", slide.title, "big") : ""}${from}${bubble(ctx, "them", slide.body)}</div>`;
+        case "list":
+          return k + `<div class="bubbles">${day}${slide.title ? bubble(ctx, "me", slide.title, "big") : ""}${from}
+            ${(slide.items || []).map((it) => bubble(ctx, "them", it)).join("")}</div>`;
+        case "compare":
+          return k + `<div class="bubbles">${day}${slide.title ? bubble(ctx, "me", slide.title, "big") : ""}${from}
+            ${(slide.items || []).map((it) => `<div class="bubble them cmp-row"><span>${ctx.text(it.label)}</span><span class="v">${ctx.text(it.value)}</span></div>`).join("")}
+            </div>` + (slide.note ? `<p class="note-line">${ctx.text(slide.note)}</p>` : "");
+        case "quote":
+          return `<div class="bubbles">${day}<span class="sender">${ctx.esc(slide.source || ctx.brand.name)}</span>${bubble(ctx, "them", slide.quote, "big")}</div>`;
+        case "stat":
+          return k + `<p class="value">${ctx.text(slide.value)}</p><p class="label">${ctx.text(slide.label)}</p>` +
+            (slide.note ? `<div class="bubbles">${bubble(ctx, "them", slide.note)}</div>` : "");
+        case "cover":
+          return input(ctx, "메시지 보내기") + base(slide);
+        case "closing":
+          return input(ctx, "저장해두고 다시 보기") + base(slide);
+        default:
+          return base(slide);
+      }
+    },
+  };
+})();
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>

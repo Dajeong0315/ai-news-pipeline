@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- magazine: 사진 풀블리드 + 위 양쪽 노란 타자체(vol. 번호 · 시리즈) + 노란 네모와 노란 바탕 태그 + 중간 굵기 흰 제목,
+     아래 왼쪽 출처·핸들, 오른쪽 격자 로고. vol.은 렌더한 날의 연중 일수. (레퍼런스: MORE THAN LOCAL vol.006 에디터 잘산템) -->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --y: #F4EE6A; }
+  .slide { color: #fff; font-family: "Pretendard", sans-serif; }
+  .slide .bg img { filter: brightness(.9) saturate(.9); }
+  .slide .shade { background: linear-gradient(180deg, rgba(0,0,0,.25) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,.1) 50%, rgba(0,0,0,.6) 100%); }
+  .slide:not(.k-cover) .shade { background: rgba(0,0,0,.58); }
+  .deco .mono { top: 56px; font-family: "Space Mono", "Pretendard", monospace; font-size: 32px; color: var(--y); }
+  .deco .vol { left: 64px; } .deco .ed { right: 64px; }
+
+  .content { left: 64px; right: 64px; bottom: 190px; }
+  .kicker { display: inline-flex; align-items: center; gap: 22px; font-size: 38px; font-weight: 700; margin-bottom: 28px; }
+  .kicker::before { content: ""; width: 34px; height: 34px; background: var(--y); }
+  .kicker span { background: var(--y); color: #111; padding: 2px 14px; }
+  .title { font-size: 100px; font-weight: 600; line-height: 1.24; letter-spacing: -.035em; text-shadow: 0 3px 24px rgba(0,0,0,.3); }
+  h2.title { font-size: 80px; }
+  .subtitle { margin-top: 24px; font-size: 36px; font-weight: 400; opacity: .9; }
+
+  .slide:not(.k-cover):not(.k-closing) .content { top: 50%; bottom: auto; transform: translateY(-50%); }
+  .body, .note, .label { margin-top: 34px; font-size: 44px; line-height: 1.6; font-weight: 400; }
+  .label { font-weight: 600; font-size: 52px; line-height: 1.35; }
+  .value { font-size: 250px; font-weight: 700; letter-spacing: -.05em; line-height: 1; color: var(--y); }
+  .items { margin-top: 36px; display: flex; flex-direction: column; gap: 24px; }
+  .items li { display: flex; gap: 24px; font-size: 46px; font-weight: 500; align-items: baseline; }
+  .items .n { font-family: "Space Mono", "Pretendard", monospace; color: var(--y); font-size: 40px; }
+  .compare { margin-top: 44px; display: flex; gap: 0; border-top: 2px solid rgba(255,255,255,.5); }
+  .compare li { flex: 1; padding-top: 26px; display: flex; flex-direction: column; gap: 6px; }
+  .compare li + li { border-left: 2px solid rgba(255,255,255,.5); padding-left: 36px; }
+  .c-label { font-family: "Space Mono", "Pretendard", monospace; font-size: 32px; color: var(--y); }
+  .c-value { font-size: 110px; font-weight: 700; letter-spacing: -.04em; }
+  .quote { font-size: 84px; font-weight: 600; line-height: 1.3; letter-spacing: -.03em; }
+  .source { margin-top: 30px; font-family: "Space Mono", "Pretendard", monospace; font-size: 30px; color: var(--y); }
+
+  .foot { left: 64px; right: 64px; bottom: 60px; font-size: 26px; color: rgba(255,255,255,.75); }
+  .foot .logo { display: grid; grid-template-columns: repeat(2, 1fr); border: 2px solid rgba(255,255,255,.8); font-size: 26px; font-weight: 800; color: #fff; }
+  .foot .logo span { padding: 2px 10px; text-align: center; } .foot .logo span:nth-child(odd) { border-right: 2px solid rgba(255,255,255,.8); }
+  .foot .logo span:nth-child(n+3) { border-top: 2px solid rgba(255,255,255,.8); }
+</style></head>
+<body><div id="deck"></div>
+<script>
+(() => {
+  const now = new Date();
+  const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+  window.TEMPLATE = {
+    deco: (slide, ctx) => `<span class="mono vol">vol.${String(dayOfYear).padStart(3, "0")}</span>
+      <span class="mono ed">${ctx.esc(ctx.brand.series || "editor")}</span>`,
+    content(slide, ctx, base) {
+      // kicker는 노란 네모 + 노란 바탕 글자로
+      return base(slide).replace(/<p class="kicker">([\s\S]*?)<\/p>/, '<p class="kicker"><span>$1</span></p>');
+    },
+    foot(slide, ctx) {
+      const w = [...String(ctx.brand.wordmark || ctx.brand.name).replace(/\s/g, "")].slice(0, 4);
+      return `<footer class="foot"><span>${ctx.esc(ctx.brand.handle || "")}</span>
+        <span class="logo">${w.map((c) => `<span>${ctx.esc(c)}</span>`).join("")}</span></footer>`;
+    },
+  };
+})();
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>

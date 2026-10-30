@@ -26,6 +26,17 @@ STYLE_SUFFIX = {
     "darkcenter": "dark cinematic photograph, low key lighting, deep shadows, fog, single light source, cool tones, lots of negative space",
     "blocktitle": "candid documentary street photograph, natural daylight, vivid but realistic colors, 35mm",
     "cutout": "close-up flat texture background, softly out of focus, slightly desaturated, evenly lit, no people",
+    # 두 번째 채널(청년) 템플릿용(2026-10-30). chat·notify는 사진을 쓰지 않지만 파이프라인이 배경을 한 장 만들므로 둔다.
+    "chat": "minimal dark abstract background, deep black, subtle soft glow",
+    "notify": "soft colorful abstract gradient wallpaper",
+    "desktop": "bright tidy desk setup photo with a laptop and small gadgets, soft natural window light, warm minimal tones",
+    # soft는 누끼처럼 쓰려고 흰 배경 위 피사체 하나를 요청한다(템플릿이 곱하기로 흰 부분을 지운다).
+    "soft": "single subject, full body, isolated on a pure white seamless studio background, soft even light, centered, lots of white margin",
+    "edit": "warm film lifestyle photo, soft natural light, muted beige and cream tones, cozy everyday scene, gentle grain",
+    "airdrop": "candid point-of-view lifestyle snapshot, soft overcast daylight, muted warm tones, everyday moment with a phone or coffee",
+    # folder는 한 장을 왼쪽·가운데·오른쪽 세 구도로 잘라 쓰므로 가로로 넓게 볼거리가 있는 장면이 좋다.
+    "folder": "wide candid snapshot with several interesting details spread across the frame, bright natural light, vivid colors",
+    "magazine": "editorial magazine photograph, shallow depth of field, bokeh city lights, clean modern tones",
 }
 NEGATIVE = "no text, no letters, no logos, no watermark"
 

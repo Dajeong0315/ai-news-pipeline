@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- airdrop: 필름톤 사진 풀블리드 위에 얇은 파일 공유 창 틀(반투명 흰 머리말 + 거절/수락, 가운데로 사진이 비침) +
+     창 안쪽에 맞춘 얇은 산스·명조 두 색 제목(흰색/연분홍) + 손글씨 키워드 스티커와 연하늘 말풍선 라벨 + 손그림 반짝이 + 반투명 독.
+     창 제목·버튼·라벨은 덱의 props로 매번 바뀐다(없으면 기본값).
+     속지는 흐린 사진 위 크림 창. 이모지·쨍한 원색·굵은 글씨는 쓰지 않는다(2026-10-30 운영자 피드백으로 edit과 톤 통일).
+     특정 회사 로고·앱 아이콘은 쓰지 않는다. (레퍼런스: ELLA CONTENT CLUB a day in the life) -->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Pen+Script&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --paper: #FBF8F3; --ink: #2E2925; --soft: #7A6F66; --line: #E7DED4; --rose: #F2D4DC; --sky: #A9CDEB; --btn: #3D7CC9; }
+  .slide { color: var(--ink); font-family: "Pretendard", sans-serif; }
+  .slide .bg img { filter: sepia(.18) saturate(.88) contrast(.96) brightness(1.03); }
+  .slide .shade { background: radial-gradient(ellipse 60% 30% at 50% 63%, rgba(40,30,20,.5), rgba(40,30,20,0) 100%), linear-gradient(180deg, rgba(40,30,20,.12), rgba(40,30,20,.1) 50%, rgba(40,30,20,.4)); }
+  .slide:not(.k-cover) .bg img { filter: sepia(.2) saturate(.85) blur(16px) brightness(.92); transform: scale(1.08); }
+  .slide:not(.k-cover) .shade { background: rgba(60,45,35,.18); }
+
+  /* 공유 창 틀 */
+  .deco .frame { left: 150px; top: 250px; width: 780px; }
+  .frame .head { background: rgba(251,248,243,.92); border-radius: 28px 28px 0 0; padding: 28px 30px 22px; text-align: center; }
+  .frame .head b, .win .head b { display: block; font-size: 46px; font-weight: 500; letter-spacing: -.01em; }
+  .frame .head small, .win .head small { display: block; margin-top: 6px; font-size: 25px; letter-spacing: .14em; color: var(--soft); }
+  .frame .hole { height: 560px; border-left: 1.5px solid rgba(255,255,255,.75); border-right: 1.5px solid rgba(255,255,255,.75); }
+  .frame .btns, .win .btns { display: flex; background: rgba(251,248,243,.92); }
+  .frame .btns { border-radius: 0 0 28px 28px; }
+  .frame .btns span, .win .btns span { flex: 1; text-align: center; padding: 26px 0; font-size: 38px; color: var(--btn); font-weight: 400; }
+  .frame .btns span + span, .win .btns span + span { border-left: 1px solid var(--line); }
+
+  /* 표지 장식 */
+  .deco .word { left: 80px; top: 70px; transform: rotate(-8deg); font-family: "Nanum Pen Script", cursive; font-size: 140px; line-height: 1; color: var(--rose);
+                -webkit-text-stroke: 2px #C98FA2; filter: drop-shadow(0 0 0 #fff) drop-shadow(4px 0 0 #fff) drop-shadow(-4px 0 0 #fff) drop-shadow(0 4px 0 #fff) drop-shadow(0 -4px 0 #fff); }
+  .deco .pill { left: 40px; top: 190px; transform: rotate(-6deg); background: var(--sky); color: #fff; font-size: 38px; font-weight: 400; letter-spacing: .02em; padding: 16px 44px 18px; border-radius: 50px; }
+  .deco .spark { width: 46px; color: #fff; }
+  .content { left: 72px; right: 72px; top: 590px; }
+  .k-cover .content { left: 200px; right: 200px; top: 390px; height: 560px; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: 44px; }
+  .k-cover .kicker { display: none; }
+  .k-cover .title { font-size: 112px; line-height: 1.1; letter-spacing: -.045em; color: #fff; text-shadow: 0 2px 6px rgba(40,30,20,.35), 0 4px 30px rgba(40,30,20,.45); }
+  .title .thin { font-weight: 300; } .title .serif { font-family: "Gowun Batang", serif; font-weight: 700; letter-spacing: -.02em; }
+  .k-cover .title .serif { color: #F7DCE3; }
+  .k-cover .subtitle { margin-top: 22px; font-size: 32px; line-height: 1.45; color: #fff; font-weight: 300; text-shadow: 0 2px 12px rgba(40,30,20,.45); }
+
+  /* 속지: 크림 창 */
+  .slide:not(.k-cover) .content { top: 50%; transform: translateY(-56%); left: 80px; right: 80px; }
+  .win { background: var(--paper); border-radius: 30px; overflow: hidden; box-shadow: 0 24px 60px rgba(40,30,20,.2); }
+  .win .head { padding: 38px 48px 28px; text-align: center; border-bottom: 1px solid var(--line); }
+  .win .in { padding: 60px 64px 66px; }
+  .win h2 { font-size: 88px; line-height: 1.22; letter-spacing: -.04em; }
+  .win .body { margin-top: 34px; font-size: 46px; line-height: 1.7; color: #3d3631; font-weight: 300; }
+  .win .value { font-family: "Gowun Batang", serif; font-size: 250px; line-height: 1; text-align: center; }
+  .win .label { margin-top: 26px; font-size: 54px; font-weight: 300; line-height: 1.4; text-align: center; }
+  .win .note { margin-top: 22px; font-size: 36px; color: var(--soft); text-align: center; font-weight: 300; }
+  .win ul { margin-top: 20px; }
+  .win ul li { padding: 30px 0; border-bottom: 1px dashed var(--line); font-size: 48px; font-weight: 300; }
+  .win ul li:last-child { border-bottom: 0; }
+  .win .cmp { margin-top: 30px; display: flex; border-top: 1px solid var(--line); }
+  .win .cmp div { flex: 1; padding-top: 26px; }
+  .win .cmp div + div { border-left: 1px solid var(--line); padding-left: 34px; }
+  .win .cmp small { display: block; font-size: 36px; letter-spacing: .06em; color: var(--soft); }
+  .win .cmp b { display: block; font-family: "Gowun Batang", serif; font-weight: 400; font-size: 120px; }
+  .win .quote { font-family: "Gowun Batang", serif; font-size: 80px; line-height: 1.38; text-align: center; letter-spacing: -.02em; }
+  .win .btns { border-top: 1px solid var(--line); }
+
+  .deco .dock { left: 50%; transform: translateX(-50%); bottom: 60px; display: flex; gap: 14px; padding: 14px 18px; border-radius: 28px; background: rgba(251,248,243,.45); backdrop-filter: blur(8px); }
+  .dock i { width: 64px; height: 64px; border-radius: 16px; }
+  .foot { display: none !important; }
+</style></head>
+<body><div id="deck"></div>
+<script>
+(() => {
+  // 원색 대신 뮤트 톤 네모(앱 아이콘을 흉내 내지 않는 장식)
+  const DOCK = ["#C9D9E6", "#EFE7DC", "#A9C2D8", "#CFC6BC", "#E7C9CF", "#C6D6C2", "#F1E2B8", "#B9CFE0", "#E6CDB4", "#D3C5DD"];
+  const mixTitle = (ctx, title) => String(title || "").split("\n")
+    .map((l, i) => `<span class="${i ? "serif" : "thin"}">${ctx.esc(l)}</span>`).join("<br>");
+  const head = (ctx, sub) => `<div class="head"><b>${ctx.esc(ctx.props.window_title || "파일 공유")}</b><small>${ctx.esc(String(sub).toUpperCase())}</small></div>`;
+  const btns = (ctx, pair) => `<div class="btns">${(pair || ["거절", "수락"]).map((b) => `<span>${ctx.esc(b)}</span>`).join("")}</div>`;
+  window.TEMPLATE = {
+    deco(slide, ctx) {
+      const brand = ctx.brand.wordmark || ctx.brand.name || "";
+      let html = `<div class="dock">${DOCK.map((c) => `<i style="background:${c}"></i>`).join("")}</div>`;
+      if (slide.kind === "cover") {
+        html = `<div class="frame">${head(ctx, brand)}<div class="hole"></div>${btns(ctx, ctx.props.buttons)}</div>` + html;
+        if (slide.kicker) html += `<div class="word">${ctx.esc(slide.kicker)}</div><div class="pill">${ctx.esc(ctx.props.label || "오늘의 키워드")}</div>`;
+        html += `<span class="spark" style="left:960px;top:280px">${ctx.doodles.sparkleLine}</span>` +
+                `<span class="spark" style="left:955px;top:960px;width:34px">${ctx.doodles.sparkle}</span>` +
+                `<span class="spark" style="left:95px;top:1000px;width:30px">${ctx.doodles.sparkle}</span>`;
+      }
+      return html;
+    },
+    content(slide, ctx) {
+      const sub = slide.kicker || ctx.brand.series || ctx.brand.name || "";
+      const win = (inner, buttons = btns(ctx, ctx.props.buttons)) => `<div class="win">${head(ctx, sub)}<div class="in">${inner}</div>${buttons}</div>`;
+      const h2 = slide.title ? `<h2 class="title">${mixTitle(ctx, slide.title)}</h2>` : "";
+      switch (slide.kind) {
+        case "cover":
+          return `<h1 class="title">${mixTitle(ctx, slide.title)}</h1>` + (slide.subtitle ? `<p class="subtitle">${ctx.text(slide.subtitle)}</p>` : "");
+        case "point": return win(h2 + `<p class="body">${ctx.text(slide.body)}</p>`);
+        case "list": return win(h2 + `<ul>${(slide.items || []).map((it) => `<li>${ctx.text(it)}</li>`).join("")}</ul>`);
+        case "compare": return win(h2 + `<div class="cmp">${(slide.items || []).map((it) => `<div><small>${ctx.text(it.label)}</small><b>${ctx.text(it.value)}</b></div>`).join("")}</div>` +
+          (slide.note ? `<p class="body">${ctx.text(slide.note)}</p>` : ""));
+        case "stat": return win(`<p class="value">${ctx.text(slide.value)}</p><p class="label">${ctx.text(slide.label)}</p>` + (slide.note ? `<p class="note">${ctx.text(slide.note)}</p>` : ""));
+        case "quote": return win(`<p class="quote">${ctx.text(slide.quote)}</p>` + (slide.source ? `<p class="note">${ctx.text(slide.source)}</p>` : ""));
+        case "closing": return win(h2 + (slide.body ? `<p class="body">${ctx.text(slide.body)}</p>` : ""), btns(ctx, ctx.props.closing_buttons || ["나중에", "저장하기"]));
+      }
+      return "";
+    },
+  };
+})();
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>

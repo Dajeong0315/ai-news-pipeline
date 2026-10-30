@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- folder: 크림색 바탕 + 작은 복사/붙여넣기 팝업 + 얇은 산스·명조를 섞은 큰 제목 + 작은 픽셀 커서 + 톤 다운한 폴더들 +
+     목록(hook, 첫 줄 선택) + 필름톤 사진 세 장(한 장을 세 구도로) + 아래 폴더 앞면. 속지는 폴더에서 꺼낸 크림 종이 한 장.
+     2026-10-30 운영자 피드백으로 edit 템플릿과 톤(따뜻한 필름톤·얇은 글씨·뮤트 색)을 맞췄다. (레퍼런스: What's inside this folder) -->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Allura&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --cream: #F2ECE3; --paper: #FBF8F3; --ink: #2E2925; --soft: #7A6F66; --line: #DDD3C7; --sel: #DCE6F0; --f1: #D3DEE8; --f2: #AFC0D0; }
+  .slide { background: var(--cream); color: var(--ink); font-family: "Pretendard", sans-serif; }
+  .slide .bg, .slide .shade { display: none; }
+  .photo { filter: sepia(.18) saturate(.88) contrast(.96) brightness(1.03); }
+
+  .popup { position: relative; display: inline-flex; background: #fff; border-radius: 14px; box-shadow: 0 6px 18px rgba(46,41,37,.08); font-size: 31px; color: #3d3631; }
+  .popup span { padding: 16px 30px; } .popup span + span { border-left: 1px solid #eee5dc; }
+  .popup::after { content: ""; position: absolute; left: 50%; bottom: -12px; margin-left: -12px; border: 12px solid transparent; border-bottom: 0; border-top-color: #fff; }
+  .deco .folder { width: 160px; height: 118px; border-radius: 10px 10px 12px 12px; background: linear-gradient(180deg, var(--f1), var(--f2)); }
+  .deco .folder::before { content: ""; position: absolute; left: 0; top: -16px; width: 68px; height: 24px; border-radius: 9px 9px 0 0; background: var(--f1); }
+  .deco .folder small { position: absolute; left: -20px; right: -20px; top: 130px; text-align: center; font-size: 27px; color: var(--soft); }
+  .deco .list { z-index: 1; right: 72px; top: 545px; width: 470px; background: rgba(255,255,255,.9); border-radius: 18px; padding: 14px 20px; box-shadow: 0 8px 22px rgba(46,41,37,.08); font-size: 32px; font-weight: 300; }
+  .list div { padding: 15px 12px; } .list div + div { border-top: 1px solid #eee5dc; }
+  .list div:first-child { background: var(--sel); border-radius: 6px; }
+
+  /* 표지 */
+  .content { left: 72px; right: 72px; top: 110px; text-align: center; }
+  .k-cover .kicker { display: none; }
+  .k-cover .title { margin-top: 50px; font-size: 124px; line-height: 1.12; letter-spacing: -.045em; }
+  .title .thin { font-weight: 300; } .title .serif { font-family: "Gowun Batang", serif; font-weight: 700; letter-spacing: -.02em; }
+  .k-cover .subtitle { margin-top: 24px; font-size: 32px; font-weight: 300; color: var(--soft); }
+  .deco .pol { width: 290px; height: 330px; border: 10px solid #fff; box-shadow: 0 10px 24px rgba(46,41,37,.14); background-size: cover; }
+  .deco .p1 { left: 110px; top: 880px; transform: rotate(-4deg); background-position: 15% 50%; }
+  .deco .p2 { left: 395px; top: 845px; width: 310px; height: 360px; transform: rotate(1deg); background-position: 50% 50%; }
+  .deco .p3 { left: 690px; top: 890px; transform: rotate(4deg); background-position: 85% 50%; }
+  .deco .front { left: 72px; right: 72px; bottom: 0; height: 180px; border-radius: 24px 24px 0 0; background: linear-gradient(180deg, var(--f1), var(--f2));
+                 display: flex; align-items: center; justify-content: center; color: #fff; font-size: 28px; letter-spacing: .12em; font-weight: 400; }
+  .deco .script { left: 70px; top: 715px; transform: rotate(-4deg); font-family: "Allura", cursive; font-size: 72px; color: var(--ink); }
+
+  /* 속지: 폴더에서 꺼낸 종이 */
+  .slide:not(.k-cover) .content { top: 150px; left: 100px; right: 100px; text-align: left; }
+  .paper { background: var(--paper); border-radius: 10px; padding: 64px 64px 150px; box-shadow: 0 14px 34px rgba(46,41,37,.1); height: 1080px; display: flex; flex-direction: column; }
+  .paper .in { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .paper .tab { display: flex; justify-content: space-between; font-size: 27px; letter-spacing: .14em; color: var(--soft); padding-bottom: 18px; border-bottom: 2px solid var(--ink); margin-bottom: 44px; }
+  .paper h2 { font-size: 92px; line-height: 1.2; letter-spacing: -.04em; }
+  .paper .body { margin-top: 38px; font-size: 46px; line-height: 1.7; font-weight: 300; color: #3d3631; }
+  .paper .value { font-family: "Gowun Batang", serif; font-size: 250px; line-height: 1; letter-spacing: -.03em; }
+  .paper .label { margin-top: 28px; font-size: 56px; font-weight: 300; line-height: 1.4; }
+  .paper .note { margin-top: 24px; font-size: 38px; color: var(--soft); font-weight: 300; }
+  .paper ul { margin-top: 30px; }
+  .paper ul li { display: flex; gap: 26px; align-items: center; padding: 30px 0; border-bottom: 1px dashed var(--line); font-size: 48px; font-weight: 300; }
+  .paper ul li::before { content: ""; width: 62px; height: 46px; flex-shrink: 0; border-radius: 7px; background: linear-gradient(180deg, var(--f1), var(--f2)); }
+  .paper .cmp { margin-top: 36px; display: flex; border-top: 1px solid var(--line); }
+  .paper .cmp div { flex: 1; padding-top: 28px; }
+  .paper .cmp div + div { border-left: 1px solid var(--line); padding-left: 36px; }
+  .paper .cmp small { display: block; font-size: 36px; letter-spacing: .08em; color: var(--soft); }
+  .paper .cmp b { display: block; margin-top: 6px; font-family: "Gowun Batang", serif; font-weight: 400; font-size: 124px; }
+  .paper .quote { font-family: "Gowun Batang", serif; font-size: 88px; line-height: 1.35; letter-spacing: -.02em; }
+  .slide:not(.k-cover) .deco .front { height: 230px; z-index: 2; }
+  .foot { display: none !important; }
+</style></head>
+<body><div id="deck"></div>
+<script>
+(() => {
+  const CURSOR = `<svg viewBox="0 0 12 19" shape-rendering="crispEdges"><path fill="#fff" stroke="#2E2925" stroke-width="1" d="M.5.5v15l3.5-3.5 2.5 6 2-1-2.5-6h5z"/></svg>`;
+  const mixTitle = (ctx, title) => String(title || "").split("\n")
+    .map((l, i) => `<span class="${i ? "serif" : "thin"}">${ctx.esc(l)}</span>`).join("<br>");
+  window.TEMPLATE = {
+    deco(slide, ctx) {
+      const b = ctx.brand;
+      const front = `<div class="front">${ctx.esc((b.handle || b.wordmark || "").toUpperCase())}</div>`;
+      if (slide.kind !== "cover") return front;
+      const hook = slide.hook || [];
+      const img = `background-image:url('${ctx.esc(ctx.job.background)}')`;
+      const [f1, f2] = ctx.props.folders || ["최종", "진짜_최종"];
+      return `<div class="folder" style="right:96px;top:120px"><small>${ctx.esc(f1)}</small></div><div class="folder" style="left:80px;top:540px"><small>${ctx.esc(f2)}</small></div>` +
+        (hook.length ? `<div class="list">${hook.map((h) => `<div>${ctx.esc(h)}</div>`).join("")}</div>` : "") +
+        `<div class="script">${ctx.esc(ctx.props.script || "what's inside")}</div>` +
+        `<div class="pol photo p1" style="${img}"></div><div class="pol photo p3" style="${img}"></div><div class="pol photo p2" style="${img}"></div>` + front;
+    },
+    content(slide, ctx) {
+      const tab = `<div class="tab"><span>${ctx.esc(slide.kicker || ctx.brand.series || ctx.brand.name || "")}</span><span>${String(ctx.i).padStart(2, "0")} / ${String(ctx.n).padStart(2, "0")}</span></div>`;
+      const h2 = slide.title ? `<h2 class="title">${mixTitle(ctx, slide.title)}</h2>` : "";
+      const paper = (inner) => `<div class="paper">${tab}<div class="in">${inner}</div></div>`;
+      switch (slide.kind) {
+        case "cover":
+          return `<div class="popup"><span>잘라내기</span><span>복사</span><span>붙여넣기</span><span>바꾸기… ▸</span></div>
+            <h1 class="title">${mixTitle(ctx, slide.title)}<span style="display:inline-block;width:42px;vertical-align:-30px;margin-left:-8px">${CURSOR}</span></h1>` +
+            (slide.subtitle && !(slide.hook || []).length ? `<p class="subtitle">${ctx.text(slide.subtitle)}</p>` : "");
+        case "point": return paper(h2 + `<p class="body">${ctx.text(slide.body)}</p>`);
+        case "list": return paper(h2 + `<ul>${(slide.items || []).map((it) => `<li>${ctx.text(it)}</li>`).join("")}</ul>`);
+        case "compare": return paper(h2 + `<div class="cmp">${(slide.items || []).map((it) => `<div><small>${ctx.text(it.label)}</small><b>${ctx.text(it.value)}</b></div>`).join("")}</div>` +
+          (slide.note ? `<p class="body">${ctx.text(slide.note)}</p>` : ""));
+        case "stat": return paper(`<p class="value">${ctx.text(slide.value)}</p><p class="label">${ctx.text(slide.label)}</p>` + (slide.note ? `<p class="note">${ctx.text(slide.note)}</p>` : ""));
+        case "quote": return paper(`<p class="quote">${ctx.text(slide.quote)}</p>` + (slide.source ? `<p class="note">${ctx.text(slide.source)}</p>` : ""));
+        case "closing": return paper(h2 + (slide.body ? `<p class="body">${ctx.text(slide.body)}</p>` : ""));
+      }
+      return "";
+    },
+  };
+})();
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>
