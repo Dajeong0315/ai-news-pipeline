@@ -124,7 +124,7 @@ SYSTEM_PROMPT = SYSTEM_PROMPT.replace("{channel_rules}", "".join(
 )).replace("{hashtag_example}", config.CHANNEL_CONFIG["hashtag_example"]).replace(
     "3~7장. 할 말이 3장이면 3장으로", f"{SLIDES_MIN}~{SLIDES_MAX}장. 할 말이 {SLIDES_MIN}장이면 {SLIDES_MIN}장으로"
 ).replace("인스타 캡션 본문(3~5문장, 해시태그 제외)", CAPTION_SPEC)
-# 말투도 채널별. 청년 채널(정보담당)은 단톡방 정보담당 친구의 다정한 반말(2026-10-30 운영자 확정). 기본은 해요체.
+# 말투도 채널별. 청년 채널(디징)은 단톡방에서 정보 챙겨주는 친구의 다정한 반말(2026-10-30 운영자 확정). 기본은 해요체.
 BANMAL = config.CHANNEL_CONFIG.get("speech") == "banmal"
 if BANMAL:
     SYSTEM_PROMPT = SYSTEM_PROMPT.replace(
@@ -154,7 +154,7 @@ EDITOR_PROMPT = EDITOR_PROMPT.replace("(3~7장 유지)", f"({SLIDES_MIN}~{SLIDES
 if BANMAL:
     EDITOR_PROMPT = EDITOR_PROMPT.replace(
         '3. 어감: 모든 문장 끝을 해요체("~예요", "~해요", "~죠", "~어요")로 통일한다.', f"3. 어감: {config.CHANNEL_CONFIG['editor_tone']}"
-    ).replace("친구에게 설명하듯 쉽고 담백하게.", "단톡방 정보담당이 친구한테 챙겨주듯 짧고 정확하게.")
+    ).replace("친구에게 설명하듯 쉽고 담백하게.", "단톡방에서 정보 챙겨주는 친구가 말하듯 짧고 정확하게.")
 # 반말 채널은 끝맺음이 다양해 허용 목록 대신 기사체·합쇼체 끝맺음만 막는다.
 _ARTICLE_END_RE = re.compile(r"(습니다|습니까|었다|았다|했다|였다|이다|한다|된다|있다|없다|보인다)[.!?…]*$")
 

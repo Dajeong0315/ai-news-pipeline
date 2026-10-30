@@ -4,6 +4,14 @@
 
 ## 2026-10-30 채널 구조 도입 + 두 번째 채널(→ 2030 청년 생활정보) (코드 완료, DB 마이그레이션·실행 검증 전)
 
+### 계정 이름 변경: 정보담당 → "디징" (같은 날, Aside 세션)
+
+- 운영자: 콘텐츠와 상관없는 별명형 이름으로. channel.json(name·writer_intro·hook·캡션 예시), brands/youth.json(name·wordmark "디징", handle은 가입 때),
+  webhook/api/index.py CHANNELS 이름, slide_writer.py 주석, research/README.md 반영. 말투 컨셉(단톡방에서 정보 챙겨주는 친구)은 그대로.
+- 인스타 핸들 @dijing.kr(2026-10-30 비어 있음 확인, 가입 시 최종 확인), 새 구글 계정 dijing.kr@gmail.com(운영자 생성). brands/youth.json·webhook CHANNELS에 핸들 반영.
+  Cloudflare·인스타·메타·노션은 이 구글 계정으로 새로 만든다.
+- 대시보드 이름 반영은 webhook 커밋·push 필요. 아래 기록의 "정보담당"은 같은 채널(youth)의 이전 이름.
+
 ### 대시보드: 채널 전환(경제·정보담당) + 갤럭시 폰 화면 (같은 날, Aside 세션, 배포 전)
 
 - `webhook/api/index.py`: `CHANNELS` 설정(이름·카테고리·daily_posts, channel.json과 같이 고칠 것)과 `channel_ctx()` 추가.

@@ -40,7 +40,7 @@ CHANNELS = {
         "categories": {"index_macro": "지수/거시", "stock": "개별종목", "policy_industry": "정책/산업"},
     },
     "youth": {
-        "name": "정보담당", "handle": "", "daily_posts": 2,
+        "name": "디징", "handle": "@dijing.kr", "daily_posts": 2,
         "categories": {"youth_support": "지원금/제도", "youth_job": "채용/취업·자격증", "youth_activity": "대외활동/공모전"},
     },
 }
@@ -516,7 +516,7 @@ async def dash_calendar(days: int = 30, channel: str | None = None):
                 "label": CATEGORY_LABELS[c],
                 "cells": [grid[c].get(d, {"state": "none"}) for d in dates],
                 "published": sum(1 for v in grid[c].values() if v["state"] == "published"),
-                # 하루 게시 수를 정한 채널(정보담당)은 이월 쿼터를 쓰지 않는다.
+                # 하루 게시 수를 정한 채널(디징)은 이월 쿼터를 쓰지 않는다.
                 "quota_tomorrow": None if ch["cfg"]["daily_posts"] else get_allowed_quota(c, as_of=tomorrow),
             }
             for c in ch["categories"]

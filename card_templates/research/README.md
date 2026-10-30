@@ -8,7 +8,7 @@
 - `YYYY-MM-DD.md`: 그 주 리서치 보고서(참고한 게시물·반응 수치·뽑은 디자인 요소·만든/고친 템플릿·순환 변경)
 - `log.md`: 주차별 한 줄 요약 + 이미 참고한 게시물 URL(중복 참고 방지)
 - `preview_in_browser.js`: 파이썬·노드 없이 브라우저(Aside REPL)에서 템플릿을 렌더하고 render.js와 같은 QA를 돌리는 도구
-- `sample-youth-deck.json`: 정보담당 미리보기용 샘플 덱(경제는 `output/template-sample/deck-preview.json`)
+- `sample-youth-deck.json`: 디징(청년) 미리보기용 샘플 덱(경제는 `output/template-sample/deck-preview.json`)
 
 ## 기준
 
@@ -17,7 +17,7 @@
 - 가져오는 것은 레이아웃·구성·장치(말풍선, 체크리스트, 대화 도입, 표지 구도 등). 남의 로고·캐릭터·문구·사진은 가져오지 않는다.
 - 채널 톤
   - 경제(묘한 경제): 사진형 + 고양이 마스코트 버전과 `:plain` 버전. 순환은 `config.py`의 `CARD_TEMPLATES` 기본값.
-  - 청년(정보담당): 따뜻한 필름톤·크림/베이지·얇은 산스+명조 제목·작은 UI 소품. 캐릭터·이모지·원색 없음.
+  - 청년(디징): 따뜻한 필름톤·크림/베이지·얇은 산스+명조 제목·작은 UI 소품. 캐릭터·이모지·원색 없음.
     단톡·공유·폴더·메모 같은 "친구가 챙겨주는" 장면. 순환은 `channels/youth/channel.json`의 `card_templates`.
 - 새 템플릿 체크리스트(card_templates/README.md "새 템플릿 추가"와 같음)
   1. `card_templates/<이름>/template.html` (`../_shared/base.css`, `../_shared/engine.js` 사용, 위치 잡는 요소는 `deco`에)
