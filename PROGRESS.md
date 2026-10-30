@@ -28,7 +28,7 @@ RSS 4,595건 → 저장 대상 385건 → 신규 저장 305건(나머지는 전�
 ### 참고
 
 - `keyword_stats` 수집 건수도 함께 줄어든다(검색어당 하루 최대 10건 → 30일 최대 300건). "교체 검토" 기준(수집 20건 이상)은 그대로 유효.
-- 쌓여 있던 옛 `collected` 행 정리(운영자 승인, 10:48): 48시간 넘은 `collected` 38,244건을 삭제 없이
+- 쌓여 있던 옛 `collected` 행 정리(운영자 승인, 09:48): 48시간 넘은 `collected` 38,244건을 삭제 없이
   `expired`로 표시. 실행 전후 `collected` 39,666 → 1,422건, `expired` 0 → 38,244건 확인.
   실행한 조건은 `UPDATE news_items SET status='expired' WHERE status='collected' AND collected_at < now() - interval '48 hours'`
   와 같다(Supabase REST PATCH로 실행). 되돌리려면 `UPDATE news_items SET status='collected' WHERE status='expired'`
