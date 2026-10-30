@@ -12,6 +12,7 @@ from db import get_client
 from llm_client import call_text_model
 
 log = logging.getLogger("auto_select")
+ALLOW_EMPTY_PICK = config.CHANNEL_CONFIG.get("allow_empty_pick", False)  # 하루 0건을 허용하는 채널
 
 
 def fetch_candidates(category: str) -> list[dict]:
@@ -107,9 +108,12 @@ def choose_across_categories(candidates: list[dict], limit: int) -> list[int]:
          "summary": (item.get("summary") or "")[:200]}
         for item in candidates
     ]
+    # 그날 0건을 허용하는 채널(청년, 2026-10-30): 지역 한정 행사뿐인 날 억지로 1건을 채우지 않는다.
+    minimum = 0 if ALLOW_EMPTY_PICK else 1
+    empty_note = "올릴 만한 기사가 없으면 {\"ids\": []}로 비워 둔다. " if ALLOW_EMPTY_PICK else ""
     prompt = (
-        f"너는 {config.CHANNEL_CONFIG['selector_role']}이다. 아래 후보 중 오늘 올릴 기사를 1~{limit}건 골라라. "
-        f"정말 좋은 기사가 하나뿐이면 1건만 고른다. 여러 건이면 서로 다른 주제로 고른다. "
+        f"너는 {config.CHANNEL_CONFIG['selector_role']}이다. 아래 후보 중 오늘 올릴 기사를 {minimum}~{limit}건 골라라. "
+        f"정말 좋은 기사가 하나뿐이면 1건만 고른다. 여러 건이면 서로 다른 주제로 고른다. {empty_note}"
         "단순 기업 홍보, 제목만 자극적인 기사는 제외한다. "
         f"{config.CHANNEL_CONFIG.get('selector_extra', '')} JSON만 반환: {{\"ids\": [정수, ...]}}.\n\n"
         f"후보: {json.dumps(choices, ensure_ascii=False)}"
@@ -130,9 +134,13 @@ def select_daily(limit: int) -> list[dict]:
     try:
         picked_ids = choose_across_categories(candidates, limit)
     except Exception as exc:
-        log.warning("편집 선택 실패, 최신 기사 1건으로 대체: %s", exc)
+        log.warning("편집 선택 실패%s: %s", "" if ALLOW_EMPTY_PICK else ", 최신 기사 1건으로 대체", exc)
         picked_ids = []
-    selected = [item for item in candidates if item["id"] in picked_ids] or candidates[:1]
+    # 0건 허용 채널은 최신 기사로 채우지 않는다(지역 한정 행사가 그대로 올라가는 걸 막으려고)
+    selected = [item for item in candidates if item["id"] in picked_ids] or ([] if ALLOW_EMPTY_PICK else candidates[:1])
+    if not selected:
+        log.info("편집장이 고른 기사 없음(0건 허용 채널)")
+        events.record("select", "skipped", count=len(candidates), message="올릴 만한 기사 없음(0건)")
     for item in selected:
         get_client().table("news_items").update({"status": "approved"}).eq("id", item["id"]).execute()
         log.info("[%s] 자동 선정: %s", item["category"], item["title"])

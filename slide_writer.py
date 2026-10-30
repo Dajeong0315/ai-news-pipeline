@@ -79,6 +79,18 @@ CAPTION_CLOSING_WORDS = tuple(config.CHANNEL_CONFIG.get("caption_closing_words",
 _IMAGE_PROMPT_EXAMPLE = "English. A concrete photographic scene"  # 출력 형식 예시 문구. 모델이 그대로 베끼기도 한다
 CAPTION_HARD_MAX = 2200  # 인스타그램 캡션 한도(고지·해시태그 포함)
 
+# --- 2026-10-30 지난 행사 보강(한남대 채용박람회: 10/29에 끝난 행사를 "29일 열려"로 씀) ---
+# 월 없이 일만 쓴 날짜("29일", "오는 2일"). "10월 29일"의 일, "3일간"·"5일 이내" 같은 기간은 빼고 본다.
+_DAY_ONLY_RE = re.compile(r"(?:(오는|지난)\s*)?(?<![\d.월])(?<!월\s)(\d{1,2})\s*일(?!\s*(?:간|동안|이내|전|후|마다|째|치))")
+# 행사일·마감일로 보는 문장의 표지. 이 말이 있는 문장(캡션은 줄)의 날짜만 지났는지 본다("1일부터 시행" 같은 시작일은 빼려고).
+EVENT_DATE_WORDS = ("🗓", "마감", "기간", "접수", "신청", "까지", "일시", "개최", "열려", "열린", "열리", "행사", "박람회", "설명회", "면접")
+# 원문이 이미 끝난 행사를 전하는 사후 보도인지(채널 설정, 정규식). 앞으로의 날짜가 원문에 없을 때만 건너뛴다.
+_POST_EVENT_RE = re.compile("|".join(config.CHANNEL_CONFIG.get("post_event_patterns", ()))) if config.CHANNEL_CONFIG.get("post_event_patterns") else None
+CAPTION_DATE_MARK = config.CHANNEL_CONFIG.get("caption_date_mark", "")  # 원문에 날짜·기간이 있으면 캡션에 있어야 할 줄 표시(🗓)
+_PERIOD_RE = re.compile(r"\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\s*일\s*(?:부터|까지)|(?:오는|지난)\s*\d{1,2}\s*일|한\s*달\s*간|\d+\s*(?:주|개월)\s*간")
+# 표지 subtitle이 "29일"처럼 숫자·날짜 한 덩어리뿐인지(이것만 빼면 아무 말도 안 남는지)
+_BARE_SUBTITLE_RE = re.compile(r"[\d\s.,~\-/%:()]|년|월|일|시|분|원|만|억|명|개|건|세|살|배|주")
+
 
 class SkipArticle(Exception):
     """다시 써도 해결되지 않는 문제(이미 마감된 모집 등). 재시도 없이 이 기사를 건너뛴다."""
@@ -163,6 +175,9 @@ if CAPTION_CLOSING_WORDS:  # 편집장이 캡션을 다듬다 마지막 줄을 �
     EDITOR_PROMPT = EDITOR_PROMPT.replace("\n\n출력:", (
         "\n5. 캡션: 마지막 줄은 친구 태그·공유를 부탁하는 한마디로 끝낸다(예: \"같이 갈 친구 태그해\", "
         "\"이거 필요한 친구한테 보내줘\"). 신청 방법·주의할 점 줄 뒤에 둔다.\n\n출력:"))
+if CAPTION_DATE_MARK:  # 원문에 날짜·기간이 있으면 캡션 기간 줄은 빼지 않는다(2026-10-30 한남대 덱 캡션에 기간 줄 없음)
+    EDITOR_PROMPT = EDITOR_PROMPT.replace("\n\n출력:", (
+        f"\n6. 캡션 기간 줄: 원문에 날짜·기간이 있으면 캡션의 \"{CAPTION_DATE_MARK}\" 줄을 지우지 말고 원문 표기 그대로 둔다.\n\n출력:"))
 # 반말 채널은 끝맺음이 다양해 허용 목록 대신 기사체·합쇼체 끝맺음만 막는다.
 _ARTICLE_END_RE = re.compile(r"(습니다|습니까|었다|았다|했다|였다|이다|한다|된다|있다|없다|보인다)[.!?…]*$")
 
@@ -232,41 +247,83 @@ def _guess_date(m: int, d: int, today: date) -> date:
     return guess
 
 
-def has_upcoming_date(article: str, today: date | None = None) -> bool:
-    """원문에 오늘 이후 날짜가 하나라도 있으면 아직 안 끝난 모집·행사일 수 있다.
-    작성 모델의 "ended" 판단은 시도마다 흔들려서(2026-10-30 접수 전인 용인 청년기본소득을 끝났다고 봄) 이걸로 받친다."""
+def _resolve_day(prefix: str, d: int, ref: date) -> date:
+    """월 없이 일만 쓴 날짜("29일")를 기사 발행일이 있는 달로 본다. "오는"은 발행일 뒤로, "지난"은 앞으로 맞춘다."""
+    month_start = ref.replace(day=1)
+    guess = month_start.replace(day=d)
+    if prefix == "오는" and guess < ref:
+        guess = (month_start + timedelta(days=32)).replace(day=d)
+    elif prefix == "지난" and guess > ref:
+        guess = (month_start - timedelta(days=1)).replace(day=d)
+    return guess
+
+
+def has_upcoming_date(article: str, published: date | None = None, today: date | None = None) -> bool:
+    """원문에 오늘 이후 날짜("11월 2일", "오는 2일")가 하나라도 있으면 아직 안 끝난 모집·행사일 수 있다.
+    작성 모델의 "ended" 판단은 시도마다 흔들려서(2026-10-30 접수 전인 용인 청년기본소득을 끝났다고 봄) 이걸로 받친다.
+    "11.2" 같은 점 표기는 "1.5배"와 구분이 안 돼 여기서는 보지 않는다(건너뛰기를 막는 쪽으로 잘못 걸리므로)."""
     today = today or datetime.now(KST).date()
-    for m, d in _article_dates(article):
+    for m, d in _DATE_RE.findall(article):
         try:
-            if _guess_date(m, d, today) >= today:
+            if _guess_date(int(m), int(d), today) >= today:
+                return True
+        except ValueError:
+            continue
+    for prefix, d in _DAY_ONLY_RE.findall(article):
+        try:
+            if prefix == "오는" and _resolve_day(prefix, int(d), published or today) >= today:
                 return True
         except ValueError:
             continue
     return False
 
 
-def check_deadline(caption: str, today: date | None = None) -> None:
-    """캡션의 기간·마감 줄 날짜가 모두 오늘보다 앞이면 이미 끝난 모집이다. 다시 써도 소용없으니 기사를 건너뛴다."""
+def check_deadline(deck: dict, published: date | None = None, today: date | None = None) -> None:
+    """카드·캡션의 행사일·마감일이 모두 오늘보다 앞이면 이미 끝난 모집·행사다. 다시 써도 소용없으니 기사를 건너뛴다.
+    행사·마감 표지(EVENT_DATE_WORDS)가 있는 장(캡션은 줄)의 날짜만 보고, 일만 쓴 날짜는 기사 발행일 기준으로 푼다."""
     today = today or datetime.now(KST).date()
+    units = [" ".join(_texts(s)) for s in deck.get("slides") or []] + str(deck.get("caption") or "").splitlines()
     found = []
-    for line in caption.splitlines():
-        if not any(k in line for k in ("🗓", "마감", "기간", "접수", "신청")):
+    for unit in units:
+        if not any(k in unit for k in EVENT_DATE_WORDS):
             continue
-        for y, m, d in _YMD_RE.findall(line):
+        for y, m, d in _YMD_RE.findall(unit):
             try:
+                if y and int(y) < today.year:  # 생년월일·지난해 기록은 행사일이 아니다
+                    continue
                 found.append(date(int(y), int(m), int(d)) if y else _guess_date(int(m), int(d), today))
             except ValueError:
                 continue
+        for prefix, d in _DAY_ONLY_RE.findall(unit):
+            try:
+                found.append(_resolve_day(prefix, int(d), published or today))
+            except ValueError:
+                continue
     if found and max(found) < today:
-        raise SkipArticle(f"기간·마감이 이미 지남({max(found).isoformat()})이라 게시하지 않음")
+        raise SkipArticle(f"행사일·마감이 이미 지남({max(found).isoformat()})이라 게시하지 않음")
 
 
-def check_deck(deck: dict, article: str) -> None:
+def check_post_event(article: str, published: date | None = None, today: date | None = None) -> None:
+    """원문이 이미 끝난 행사를 전하는 사후 보도("개최했다고 밝혔다", "전날 ~에서", "성료")면 모집·행사 정보로 쓰지 않는다.
+    작성 모델의 "ended" 판단과 별도로 코드로 한 번 더 본다. 원문에 앞으로의 날짜가 있으면(사후 보도 끝에 다음 접수 안내 등) 넘긴다."""
+    if not _POST_EVENT_RE:
+        return
+    m = _POST_EVENT_RE.search(article)
+    if m and not has_upcoming_date(article, published, today):
+        raise SkipArticle(f"이미 끝난 행사의 사후 보도({m.group(0)!r})라 게시하지 않음")
+
+
+def check_deck(deck: dict, article: str, published: date | None = None) -> None:
     slides = deck.get("slides") or []
     if not SLIDES_MIN <= len(slides) <= SLIDES_MAX:
         raise ValueError(f"슬라이드 수 {len(slides)}장 ({SLIDES_MIN}~{SLIDES_MAX}장이어야 함)")
     if slides[0].get("kind") != "cover":
         raise ValueError("첫 장이 cover가 아님")
+    if CHECK_DEADLINE:  # 건너뛸 기사면 다른 검사로 편집을 되풀이하기 전에 먼저 끊는다(뉴런 절약)
+        check_deadline(deck, published)
+    subtitle = slides[0].get("subtitle")
+    if isinstance(subtitle, str) and subtitle.strip() and not _BARE_SUBTITLE_RE.sub("", subtitle):
+        raise ValueError(f"표지 subtitle이 숫자·날짜뿐(무엇인지 말로 쓸 것): {subtitle!r}")
     known = {"cover", "stat", "compare", "point", "list", "quote", "closing"}
     article_numbers = _numbers(article)
     seen: list[str] = []
@@ -335,9 +392,9 @@ def check_deck(deck: dict, article: str) -> None:
         last = lines[-1] if lines else ""
         if not any(w in last for w in CAPTION_CLOSING_WORDS):
             raise ValueError(f"캡션 마지막 줄이 친구 태그·공유 부탁이 아님({'/'.join(CAPTION_CLOSING_WORDS)} 중 하나를 넣을 것): {last!r}")
+    if CAPTION_DATE_MARK and _PERIOD_RE.search(article) and CAPTION_DATE_MARK not in str(deck.get("caption") or ""):
+        raise ValueError(f"원문에 날짜·기간이 있는데 캡션에 {CAPTION_DATE_MARK} 기간 줄이 없음(원문 표기 그대로 넣을 것)")
     check_plan_notice(deck, article)
-    if CHECK_DEADLINE:
-        check_deadline(str(deck.get("caption") or ""))
 
 
 def check_caption(caption, article_numbers: set[str]) -> None:
@@ -405,11 +462,14 @@ def _raise_if_quota_exhausted(e: Exception) -> None:
         raise RuntimeError("Cloudflare Workers AI 일일 무료 한도 소진(429) — 09:00 KST 리셋 후 재시도") from e
 
 
-def write_deck(title: str, article: str, category: str, hint: str = "") -> dict:
+def write_deck(title: str, article: str, category: str, hint: str = "", published: date | None = None) -> dict:
     """초안 작성 → 편집장 검수(구성·문장 구조·어감·가독성) → 코드 검사.
     검사에 걸리면 걸린 이유를 편집 단계에 돌려줘 고치게 하고, 그래도 안 되면 초안부터 다시 쓴다.
-    hint: 지난번 렌더에서 걸린 문제(글자 넘침 등). 다시 쓸 때 피하도록 원문 뒤에 붙인다."""
+    hint: 지난번 렌더에서 걸린 문제(글자 넘침 등). 다시 쓸 때 피하도록 원문 뒤에 붙인다.
+    published: 기사 발행일(KST). "29일"처럼 일만 쓴 날짜를 푸는 기준이고, 없으면 오늘."""
     article = clean_article(article)
+    if CHECK_DEADLINE:  # 사후 보도는 모델을 부르기 전에 거른다(뉴런 절약)
+        check_post_event(article, published)
     source = normalize_hanja(f"카테고리: {config.CATEGORY_LABELS.get(category, category)}\n제목: {title}\n\n[기사 원문]\n{article}")
     if hint:
         source += f"\n\n[지난번 카드 렌더에서 걸린 문제 — 이번엔 피할 것]\n{hint}"
@@ -423,7 +483,7 @@ def write_deck(title: str, article: str, category: str, hint: str = "") -> dict:
             print(f"[slide_writer] 시도 {attempt}/{MAX_ATTEMPTS} 초안 파싱 실패: {e}", file=sys.stderr)
             continue
         # 지난 행사 결과 기사 등. 다시 써도 소용없다. 원문에 앞으로의 날짜가 있으면 모델 판단만으로는 건너뛰지 않는다
-        if CHECK_DEADLINE and draft.get("ended") is True and not has_upcoming_date(article):
+        if CHECK_DEADLINE and draft.get("ended") is True and not has_upcoming_date(article, published):
             raise SkipArticle("이미 끝난 행사·모집이라 게시하지 않음(작성 단계 판단)")
         deck, feedback = draft, ""
         for review in range(1, 4):  # 편집 1회 + 검사 실패 시 수정 최대 2회
@@ -432,7 +492,7 @@ def write_deck(title: str, article: str, category: str, hint: str = "") -> dict:
                 request += f"\n\n[검사에서 걸린 문제 — 반드시 고칠 것]\n{feedback}"
             try:
                 deck = _parse(call_text_model(EDITOR_PROMPT, request, max_tokens=8000, model=MODEL))
-                check_deck(deck, article + " " + title)
+                check_deck(deck, article + " " + title, published)
                 hashtags = deck.get("hashtags") if isinstance(deck.get("hashtags"), list) else []
                 tags = " ".join("#" + str(t).lstrip("#").replace(" ", "") for t in hashtags[:8])
                 footer = "\n".join(p for p in (DISCLAIMER, tags) if p)

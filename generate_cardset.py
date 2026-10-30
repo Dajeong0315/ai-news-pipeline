@@ -57,7 +57,7 @@ def fetch_approved_without_cardset() -> list[dict]:
     approved_since = (datetime.now(timezone.utc) - timedelta(hours=config.MAX_AGE_HOURS)).isoformat()
     approved = (
         client.table("news_items")
-        .select("id,title,url,category")
+        .select("id,title,url,category,published_at")
         .eq("status", "approved")
         .in_("category", list(config.CATEGORIES))
         .gte("collected_at", approved_since)
@@ -157,9 +157,12 @@ def process_item(item: dict, slot: int = 0) -> dict | None:
     out_dir.mkdir(parents=True, exist_ok=True)
     background = None
     hint = ""  # 렌더에서 걸린 이유를 다음 작성에 알려줘 같은 실수를 반복하지 않게 한다
+    # "29일"처럼 일만 쓴 날짜를 푸는 기준(기사 발행일, KST). 없으면 slide_writer가 오늘로 본다.
+    published = (datetime.fromisoformat(item["published_at"]).astimezone(KST).date()
+                 if item.get("published_at") else None)
     for attempt in range(1, MAX_RENDER_ATTEMPTS + 1):
         try:
-            deck = slide_writer.write_deck(item["title"], article_text, category, hint=hint)
+            deck = slide_writer.write_deck(item["title"], article_text, category, hint=hint, published=published)
         except slide_writer.SkipArticle as e:
             fail(f"QA: {e}")
             return None
