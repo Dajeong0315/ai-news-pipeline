@@ -10,6 +10,9 @@
   webhook/api/index.py CHANNELS 이름, slide_writer.py 주석, research/README.md 반영. 말투 컨셉(단톡방에서 정보 챙겨주는 친구)은 그대로.
 - 인스타 핸들 @dijing.kr(2026-10-30 비어 있음 확인, 가입 시 최종 확인), 새 구글 계정 dijing.kr@gmail.com(운영자 생성). brands/youth.json·webhook CHANNELS에 핸들 반영.
   Cloudflare·인스타·메타·노션은 이 구글 계정으로 새로 만든다.
+- 연결 완료(2026-10-30 오후, Aside): Cloudflare 디징 전용 계정(Workers AI 토큰) + 인스타 @dijing.kr(비즈니스) ↔ 페이스북 페이지 "디징"(id 1334955663042764, 묘한경제와 같은 페북 계정이 관리).
+  메타 앱은 경제와 같은 ai-news-pipeline(1766103411392154) 사용, 권한 범위 "모든 현재 및 향후 페이지·IG". 장기 사용자 토큰에서 받은 페이지 토큰(만료 없음)과
+  IG 비즈니스 계정 ID 17841461467575831을 channels/youth/.env에 넣음. 경제 토큰은 그대로 유효(확인). 이제 youth/.env에 묘한경제 값 없음.
 - 대시보드 이름 반영은 webhook 커밋·push 필요. 아래 기록의 "정보담당"은 같은 채널(youth)의 이전 이름.
 
 ### 대시보드: 채널 전환(경제·정보담당) + 갤럭시 폰 화면 (같은 날, Aside 세션, 배포 전)
