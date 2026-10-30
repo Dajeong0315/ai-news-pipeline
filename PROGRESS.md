@@ -22,7 +22,9 @@
 - **DB** `sql/2026-10-31_listings.sql`: news_items에 source_type('news'|'listing')·apply_start·apply_end·official_url·listing(JSONB) 추가.
   별도 테이블 대신 칸 추가를 고른 이유: 선정(status)·cards.news_item_id FK·게시·대시보드가 모두 news_items를 보고 있어 공고도 같은 흐름을 탄다.
   공고 행: url=수집처 상세 URL, source=기관, keyword=출처 이름(잡알리오 등), summary=대상·혜택 한 줄, published_at=접수 시작일.
-  **아직 적용 안 함(운영자 확인 후 Supabase SQL Editor에서 실행).**
+  2026-10-30 적용 완료. 처음 BEGIN…COMMIT 묶음은 두 번 실행해도 칸이 생기지 않아(원인 미확인) 문장별·IF NOT EXISTS로 바꿔 다시 실행했다.
+  적용 직후 수집 실제 저장: 신규 203건(잡알리오 61·온통청년 107·K-Startup 35), 재실행 시 갱신 203건·상태 filtered 유지,
+  선정 후보 조회 25건, 대시보드 주제 쿼리(youth·economy) 200 확인. 모델 호출(선정·카드)은 아직 안 함.
 - **선정** `auto_select.select_listings`: 후보 = status filtered, 마감 ≥ 오늘+3일, 접수 시작 ≤ 오늘(또는 없음). 최근 30일 카드의 공고(url·source_id·제목 90 이상) 제외.
   우선순위 점수(전국 30/광역 10, D-10 이내 +20, 오늘 접수 시작 +15, 연중 −25, 혜택 금액·채용 10명 이상·청년인턴 가점) 상위 25건만 모델에 보여주고
   2030 체감도까지 보고 0~2건. 모델 실패 시 0건. 카드 없이 남은 선정 공고(한도 소진 등)가 있으면 그만큼 덜 고른다.
@@ -36,7 +38,7 @@
 - **대시보드** 주제 탭: 공고는 마감 가까운 순, "마감 11/12 · D-13"과 출처(#잡알리오 등) 표시. 기사는 그대로.
   **apply_end 칸을 조회하므로 마이그레이션 적용 전에 push하면 경제 주제 탭도 깨진다 → 마이그레이션 후 push.**
 - keywords.json·collect_news·clean_news는 youth 실행 경로에서 안 씀(파일은 그대로). config.py 비밀값 가림 목록에 두 API 키 추가.
-- 남은 일: 마이그레이션 적용 → 2026-10-31 07:30 이후 `CHANNEL=youth python run_daily.py cards`(게시 X)로 출처별 수집 건수·선정·카드·caption.txt·덱당 뉴런 확인.
+- 남은 일: 대시보드 push → 2026-10-31 07:30 이후 `CHANNEL=youth python run_daily.py cards`(게시 X)로 출처별 수집 건수·선정·카드·caption.txt·덱당 뉴런 확인.
 
 ## 2026-10-30 채널 구조 도입 + 두 번째 채널(→ 2030 청년 생활정보) (코드 완료, DB 마이그레이션·실행 검증 전)
 
