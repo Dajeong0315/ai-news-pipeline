@@ -21,6 +21,7 @@ import config
 import events
 import instagram_client
 import share_to_story
+import story_queue
 import telegram_client
 from db import get_client
 
@@ -76,6 +77,9 @@ def main(argv: list[str] | None = None):
         )
         return
 
+    if story_queue.enabled():  # 지난 게시물의 Aside 스토리 공유 결과 확인(게시할 카드가 없어도)
+        story_queue.check()
+
     client = get_client()
     items = fetch_unpublished(card_id)
     log.info("업로드 대상: %d건%s", len(items), f" (card {card_id}만)" if card_id is not None else "")
@@ -114,8 +118,11 @@ def main(argv: list[str] | None = None):
             "publish", "success", category=item["category"], card_id=item["id"], count=len(pngs),
             message="인스타그램 게시 완료", detail={"media_id": media_id},
         )
+        # 스토리 공유는 Aside 루틴(12:30·19:30)이 이 목록을 보고 한다(디징 story_queue)
+        if story_queue.enabled():
+            story_queue.add(media_id, item["final_title"], item["id"])
         publish_reel(item, out_dir / "reel.mp4", caption)
-        # 게시물을 스토리로 다시 공유(디징, Business Suite 화면 자동화). 실패해도 예외 없이 알림만 → 캐러셀 게시는 성공 그대로
+        # 파이프라인이 직접 Business Suite 화면으로 공유(share_post_to_story). 헤드리스는 로그인이 풀려 디징은 끔
         if config.CHANNEL_CONFIG.get("share_post_to_story"):
             share_to_story.share(media_id, card_id=item["id"], category=item["category"])
 

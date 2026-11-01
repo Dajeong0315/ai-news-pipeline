@@ -2,6 +2,19 @@
 
 마지막 갱신: 2026-11-01
 
+## 2026-11-02 디징 스토리 공유를 Aside 루틴으로 이관 (코드 완료, Aside 루틴 등록은 운영자)
+
+파이프라인 헤드리스 공유는 Meta가 로그인을 풀어 버려(11/1) 운영자가 쓰는 Aside 브라우저 루틴으로 옮김. 루틴 3칸: 아침 공고 수집 / 스토리 공유 12:30 / 19:30.
+- `story_queue.py` + 디징 `story_queue: true`: 캐러셀 게시 직후(릴스 전) `channels/youth/outbox/stories.json`에 media_id·permalink·제목·card_id·published_at 기록.
+  Aside가 shared_at·shared_by·notes를 채운다(형식·루틴 지시문은 `channels/youth/outbox/README.md`, json은 gitignore).
+- 게시 실행마다(게시할 카드가 없어도) `story_queue.check()`: shared_at 기준 -15~+30분의 /stories 스토리를 찾아 story_id 기록·pipeline_events story success.
+  게시 2시간 뒤에도 미공유, 또는 공유 30분 뒤에도 스토리가 안 보이면 텔레그램 1회(alerted). 알림 뒤 늦게 공유해도 다시 확인. 24시간 지나면 확인 포기.
+  19:00 게시물의 공유 확인·미공유 알림은 다음 날 12:00 실행에서 나온다.
+- 디징 `share_post_to_story`는 다시 false(두 번 공유 방지). share_to_story.py는 수동·비상용으로 남김.
+- Aside는 클립보드 대신 Business Suite 목록의 "ID 또는 캡션으로 검색"에 media_id를 넣어 게시물을 찾는다
+  (11/1 확인: 캐러셀 18360383050264625·릴스 17993405238112637 각각 정확히 1줄).
+- 가짜 데이터 시험: 중복 추가 무시, 미공유 2시간·공유 후 미확인 알림, 맞는 스토리 매칭(+0000 시각), 재실행 재알림 없음, 알림 뒤 늦은 공유 확인 모두 통과.
+
 ## 2026-11-01 디징 게시물 → 스토리 다시 공유 자동화 (IBK 캐러셀 공유 완료, 정기 게시 자동 공유 켬)
 
 Graph API에 게시물을 스토리로 공유하는 기능이 없어 Meta Business Suite 화면을 Playwright(Node, ~/.cardnews-deps)로 조작.

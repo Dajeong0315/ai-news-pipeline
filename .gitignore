@@ -12,6 +12,9 @@ channels/*/music/*
 !channels/*/music/README.md
 # 디징 inbox의 날짜별 공고 파일(Aside 루틴이 매일 씀). README만 저장소에 둔다.
 channels/*/inbox/*.json
+# 디징 스토리 공유 대기 목록(파이프라인과 Aside 루틴이 매일 씀). README만 저장소에 둔다.
+channels/*/outbox/*.json
+channels/*/outbox/*.tmp
 
 # 스토리 공유 자동화(share_to_story.py)의 페이스북 로그인 브라우저 프로필·쿠키. 기본 위치는 저장소 밖(%LOCALAPPDATA%\cardnews-fb-profile)이지만 혹시 옮겨도 안 올라가게
 cardnews-fb-profile/
