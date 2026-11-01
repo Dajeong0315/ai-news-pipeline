@@ -60,6 +60,7 @@
   },
   "daily_posts": 2,
   "reels": true,
+  "reel_intro": "dday",
   "banned_phrases": [
     "너만 안 함",
     "너만 모르면",
