@@ -97,6 +97,9 @@ def check_rendered_images(out_dir: Path, expected_count: int) -> None:
 def make_background(subject: str, template: str, out_dir: Path) -> Path:
     headers = {"Authorization": f"Bearer {config.CLOUDFLARE_API_TOKEN}"}
     prompt = f"{subject}, {template_images.STYLE_SUFFIX[split_variant(template)[0]]}"
+    # 채널별 배경 보정(디징: 2026-11-01 "street photograph"에 일본어 간판 거리가 나옴). 경제는 설정 없음 → 그대로
+    if suffix := config.CHANNEL_CONFIG.get("image_prompt_suffix"):
+        prompt += f", {suffix}"
     last_error: Exception | None = None
     with httpx.Client(headers=headers, transport=httpx.HTTPTransport(local_address="0.0.0.0")) as client:
         for _ in range(2):

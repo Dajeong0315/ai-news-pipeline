@@ -76,6 +76,9 @@ CHECK_DEADLINE = config.CHANNEL_CONFIG.get("check_deadline", False)  # 모집·�
 # 원문에 없으면 쓰면 안 되는 단정(인원 제한·접수 방법 등). 숫자가 없어 숫자 대조로는 못 잡는다(2026-10-30 한남대 박람회 덱).
 CLAIM_WORDS = tuple(config.CHANNEL_CONFIG.get("claim_words", ()))
 CAPTION_CLOSING_WORDS = tuple(config.CHANNEL_CONFIG.get("caption_closing_words", ()))  # 캡션 마지막 줄의 친구 태그·공유 부탁
+# "·" 목록 속 줄임말 → 원문 표기(2026-11-01 "기초·한부·북한·…·의사"; "의사"는 의사상자인데 의사로 읽힘). 원문에 원래 표기가 있을 때만 막는다.
+LIST_ABBREVIATIONS = dict(config.CHANNEL_CONFIG.get("list_abbreviations", {}))
+_HANGUL_RE = re.compile(r"[가-힣]")
 _IMAGE_PROMPT_EXAMPLE = "English. A concrete photographic scene"  # 출력 형식 예시 문구. 모델이 그대로 베끼기도 한다
 CAPTION_HARD_MAX = 2200  # 인스타그램 캡션 한도(고지·해시태그 포함)
 
@@ -327,6 +330,24 @@ def host_names(host: str | None) -> list[str]:
     return names
 
 
+def check_listing_text(text: str, article: str, host: str | None, where: str) -> None:
+    """공고 카드 문구: 기관명이 잘려 다른 말과 붙은 경우("한국도로청년인턴")와 "·" 목록 속 줄임말("한부·의사")."""
+    names = host_names(host)
+    for name in (n for n in names if len(n) >= 5):
+        for m in re.finditer(re.escape(name[:4]), text):
+            if any(text.startswith(n, m.start()) for n in names):
+                continue
+            rest = text[m.start():]
+            same = next(k for k in range(4, len(name) + 1) if k == len(name) or k == len(rest) or rest[k] != name[k])
+            if same < len(name) and same < len(rest) and _HANGUL_RE.match(rest[same]):
+                raise ValueError(f"{where} 기관명이 잘려 다른 말과 붙음({rest[:same + 4]!r}) — 공식 이름 {name!r} 그대로 쓸 것: {text!r}")
+    for group in re.findall(r"[가-힣A-Za-z]+(?:\s*·\s*[가-힣A-Za-z]+)+", text):
+        for word in re.split(r"\s*·\s*", group):
+            full = LIST_ABBREVIATIONS.get(word)
+            if full and full in article:
+                raise ValueError(f"{where} 줄임말 {word!r}(원문 표기 {full!r}로 쓰거나 문장을 나눌 것): {text!r}")
+
+
 def check_listing_caption(deck: dict, listing: dict) -> None:
     """공고 카드 캡션: 🗓 줄에 신청 기간과 D-n(코드가 마감일로 계산한 값), ✅ 신청 방법 줄에 공식 기관명."""
     lines = str(deck.get("caption") or "").splitlines()
@@ -397,6 +418,8 @@ def check_deck(deck: dict, article: str, published: date | None = None, listing:
                 raise ValueError(f"{i}장 한자/일본어 혼입: {text!r}")
             if NO_EMOJI_ON_CARDS and _EMOJI_RE.search(text):
                 raise ValueError(f"{i}장 카드 문구에 이모지(이 채널은 카드에 이모지 금지, 캡션에만): {text!r}")
+            if listing:
+                check_listing_text(text, article, listing.get("host"), f"{i}장")
             check_facts(text, article, f"{i}장")
             # 원문에 없는 숫자 금지(연도·퍼센트·금액 모두). 한 자리 수는 서수·개수라 허용.
             for n in _numbers(text):
@@ -427,6 +450,7 @@ def check_deck(deck: dict, article: str, published: date | None = None, listing:
         raise ValueError(f"원문에 날짜·기간이 있는데 캡션에 {CAPTION_DATE_MARK} 기간 줄이 없음(원문 표기 그대로 넣을 것)")
     if listing:
         check_listing_caption(deck, listing)
+        check_listing_text(str(deck.get("caption") or ""), article, listing.get("host"), "캡션")
     check_plan_notice(deck, article)
 
 

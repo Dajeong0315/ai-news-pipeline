@@ -108,6 +108,16 @@
     "누구나",
     "정규직"
   ],
+  "list_abbreviations": {
+    "기초": "기초생활수급자",
+    "수급": "기초생활수급자",
+    "한부": "한부모",
+    "북한": "북한이탈주민",
+    "탈북": "북한이탈주민",
+    "자립": "자립준비청년",
+    "의사": "의사상자"
+  },
+  "image_prompt_suffix": "set in Seoul, South Korea, Korean people in their twenties, plain surroundings with no signs, no storefronts, no written characters anywhere",
   "caption_closing_words": [
     "태그",
     "보내",
