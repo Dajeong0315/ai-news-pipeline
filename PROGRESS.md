@@ -2,7 +2,7 @@
 
 마지막 갱신: 2026-11-01
 
-## 2026-11-01 디징 게시물 → 스토리 다시 공유 자동화 (IBK 캐러셀 실제 공유 완료, 자동 켜기는 운영자 승인 대기)
+## 2026-11-01 디징 게시물 → 스토리 다시 공유 자동화 (IBK 캐러셀 공유 완료, 정기 게시 자동 공유 켬)
 
 Graph API에 게시물을 스토리로 공유하는 기능이 없어 Meta Business Suite 화면을 Playwright(Node, ~/.cardnews-deps)로 조작.
 - `share_to_story.py` → `fb_story_share.js`. 로그인은 저장소 밖 전용 프로필 `%LOCALAPPDATA%\cardnews-fb-profile`(운영자가 `--login` 창에서 직접 로그인, 코드는 비밀번호를 안 다룸).
@@ -14,6 +14,7 @@ Graph API에 게시물을 스토리로 공유하는 기능이 없어 Meta Busine
 - 11/1 시험: 첫 헤드리스 실행 뒤 Meta가 세션을 로그아웃시킴 → 운영자 재로그인 후 보이는 창(`--headful`)으로 IBK 캐러셀(18360383050264625) dry-run 통과,
   "스토리에 추가" 직전 대화상자 확인(누르지 않음). 헤드리스 탐지 회피(UA 변경 등)는 하지 않음 — 정기 실행(헤드리스)에서 다시 로그아웃될 수 있음.
 - 11/1 23:52 운영자 승인 후 보이는 창으로 IBK 캐러셀 실제 공유 → story 18013650881977888(/stories에서 확인, https://www.instagram.com/stories/dijing.kr/4020867154199303553), pipeline_events story success.
+- 11/1 운영자 지시로 디징 `share_post_to_story: true`. 정기 게시(헤드리스) 때 로그인이 풀리면 텔레그램 실패 알림 → `python share_to_story.py --login`으로 다시 로그인.
 
 ## 2026-11-01 디징 첫 게시 — IBK기업은행 체험형 청년인턴 (게시 완료)
 
