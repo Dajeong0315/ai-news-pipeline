@@ -39,8 +39,9 @@ KST = timezone(timedelta(hours=9))
 # daily_posts: 하루 게시 수를 정한 채널(세 분야 후보 중 1~N건 선정). None이면 카테고리별 1건.
 CHANNELS = {
     "economy": {
-        "name": "묘한 경제", "handle": "@myohan.economy", "daily_posts": None,
-        "categories": {"index_macro": "지수/거시", "stock": "개별종목", "policy_industry": "정책/산업"},
+        # 2026-10-31 하루 1개·사회초년생 돈 주제로 전환(channel.json과 같이). 카테고리 키는 지난 기록 때문에 그대로.
+        "name": "묘한 경제", "handle": "@myohan.economy", "daily_posts": 1,
+        "categories": {"index_macro": "금리/대출/물가", "stock": "개별종목(수집 안 함)", "policy_industry": "돈 제도/정책"},
     },
     "youth": {
         "name": "디징", "handle": "@dijing.kr", "daily_posts": 2,

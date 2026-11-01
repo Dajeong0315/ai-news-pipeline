@@ -134,11 +134,16 @@
     "의사": "의사상자"
   },
   "cover_tiles": true,
-  "image_prompt_suffix": "set in Seoul, South Korea, Korean people in their twenties, plain surroundings with no signs, no storefronts, no written characters anywhere",
+  "image_prompt_suffix":"set in Seoul, South Korea, Korean people in their twenties, plain surroundings with no signs, no storefronts, no written characters anywhere",
   "caption_closing_words": [
     "태그",
     "보내",
     "공유"
   ],
-  "render_strict": true
+  "render_strict": true,
+  "publish_times": [
+    "12:00",
+    "19:00"
+  ],
+  "min_post_gap_hours": 6
 }

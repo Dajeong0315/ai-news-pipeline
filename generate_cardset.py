@@ -60,7 +60,7 @@ def fetch_approved_without_cardset() -> list[dict]:
     approved_since = (datetime.now(timezone.utc) - timedelta(hours=config.MAX_AGE_HOURS)).isoformat()
     approved = (
         client.table("news_items")
-        .select("id,title,url,category,published_at")
+        .select("id,title,url,source,category,published_at")
         .eq("status", "approved")
         .in_("category", list(config.CATEGORIES))
         .gte("collected_at", approved_since)
@@ -169,7 +169,7 @@ def listing_article(item: dict, days_left: int) -> str:
     return text
 
 
-def process_item(item: dict, slot: int = 0) -> dict | None:
+def process_item(item: dict, slot: int = 0, history: list[dict] | None = None) -> dict | None:
     category = item["category"]
     template = pick_template(category, slot=slot)
     is_listing = item.get("source_type") == "listing"
@@ -182,6 +182,15 @@ def process_item(item: dict, slot: int = 0) -> dict | None:
         events.record("cardset", "failed", category=category, news_item_id=item["id"], message=message)
         if status:  # 공고는 다음 날에도 후보로 남으므로, 다시 해도 안 될 실패는 상태를 바꿔 반복 선정·뉴런 소모를 막는다
             get_client().table("news_items").update({"status": status}).eq("id", item["id"]).execute()
+
+    # 중복 게시 차단(2026-10-31): 최근 7일 카드 + 이번 실행에서 이미 만든 카드와 같은 기사면 원문을 읽기 전에 건너뛴다
+    if not is_listing and history is not None and (reason := auto_select.duplicate_reason(item, history)):
+        fail(f"QA: 중복 차단 — {reason}")
+        return None
+    # 주제 필터 이전에 선정돼 카드 없이 남은 기사(10/31 첫 실행: 전날 선정된 코스피 시황·KB금융 실적 3건)도 모델 호출 전에 거른다
+    if not is_listing and (pattern := auto_select.excluded_topic(item["title"])):
+        fail(f"QA: 주제 필터 — 제목 패턴 {pattern!r}")
+        return None
 
     listing = None
     if is_listing:
@@ -216,7 +225,7 @@ def process_item(item: dict, slot: int = 0) -> dict | None:
     for attempt in range(1, MAX_RENDER_ATTEMPTS + 1):
         try:
             deck = slide_writer.write_deck(item["title"], article_text, category, hint=hint, published=published,
-                                           listing=listing)
+                                           listing=listing, outlet=None if is_listing else item.get("source"))
         except slide_writer.SkipArticle as e:
             fail(f"QA: {e}", status=give_up)
             return None
@@ -245,9 +254,13 @@ def process_item(item: dict, slot: int = 0) -> dict | None:
         (out_dir / "caption.txt").write_text(deck["caption"], encoding="utf-8")
         if config.CHANNEL_CONFIG.get("reels"):
             try:
-                reel_path = reel.make_reel(out_dir, config.CHANNEL_DIR / "music")
+                reel_path = reel.make_reel(out_dir, config.CHANNEL_DIR / "music", deck)
                 if not reel_path.exists() or reel_path.stat().st_size < 10_000:
                     raise RuntimeError(f"릴스 파일이 비었거나 너무 작음: {reel_path}")
+                seconds = reel.duration(reel_path)
+                if not reel.MIN_SEC <= seconds <= reel.MAX_SEC:
+                    raise RuntimeError(f"릴스 길이 {seconds:.1f}초({reel.MIN_SEC}~{reel.MAX_SEC}초여야 함)")
+                log.info("[%s] 릴스 %.1f초 · %.1fMB", category, seconds, reel_path.stat().st_size / 1e6)
             except Exception as e:  # 릴스가 안 돼도 캐러셀은 올린다
                 (out_dir / "reel.mp4").unlink(missing_ok=True)  # 깨진 영상이 게시 단계에서 올라가지 않게
                 log.warning("[%s] 릴스 영상 만들기 실패(캐러셀만 게시): %s", category, e)
@@ -266,10 +279,14 @@ def main():
 
     publish_order = (client.table("cards").select("id", count="exact").execute().count or 0) + 1
 
+    # 같은 실행 안에서 만든 카드끼리도 중복 검사(기사는 최근 7일 카드 + 이번 실행분, 공고는 선정 단계에서 이미 거름)
+    history = auto_select.recent_posted_items() if not auto_select.LISTINGS else None
     for slot, item in enumerate(items):
-        result = process_item(item, slot)
+        result = process_item(item, slot, history)
         if not result:
             continue
+        if history is not None:
+            history.append(item)
 
         pngs = sorted(result["out_dir"].glob("[0-9][0-9].png"))
         card = client.table("cards").insert(

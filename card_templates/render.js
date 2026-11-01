@@ -79,6 +79,16 @@ const toUrl = (p, base) => (!p || /^(https?|file|data):/.test(p) ? p : pathToFil
           if (!/hidden|clip/.test(cs.overflowX + ' ' + cs.overflowY) || !el.innerText || !el.innerText.trim()) continue;
           if (el.scrollWidth > el.clientWidth + 2 || el.scrollHeight > el.clientHeight + 2) (strict ? errors : warnings).push('clipped ' + tag(el));
         }
+        // 프로필 그리드는 4:5 게시물을 가운데 3:4(1012×1350)로 잘라 보여준다(좌우 약 34px씩 잘림).
+        // 첫 장 본문 글자가 그 밖으로 나가면 그리드에서 잘려 보이니 경고(2026-10-31, 실패 처리는 안 함).
+        if (s === document.querySelector('.slide')) {
+          const safe = (box.width - box.height * 3 / 4) / 2;
+          for (const el of s.querySelectorAll('.content *')) {
+            if (!ownText(el)) continue;
+            const r = textRects(el);
+            if (r.some((q) => q.width && (q.left < box.left + safe - 1 || q.right > box.right - safe + 1))) warnings.push('grid 3:4 crop ' + tag(el));
+          }
+        }
         for (const img of s.querySelectorAll('img')) {
           if (img.getAttribute('src') && !img.naturalWidth) errors.push(`slide ${s.dataset.i}: broken image ${String(img.getAttribute('src') || '').slice(-60)}`);
         }

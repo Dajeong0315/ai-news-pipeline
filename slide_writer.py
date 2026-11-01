@@ -51,7 +51,10 @@ _BOILERPLATE_RE = re.compile(r"<?ⓒ.*$|무단전재.*$", re.MULTILINE)
 BANNED_PHRASES = ("오를 가능성", "염두에", "기대해 볼", "주목해 보세요", "기억해 주세요", "핵심을 기억",
                   "공부해 보", "관심을 가져", "투자에 유의", "알아두면 좋",
                   # 번역투·기사체·과장(가독성 피드백, 2026-10-29)
-                  "것으로 나타났", "것으로 보인다", "이같은", "에 있어서", "라고 할 수 있", "폭등", "폭락", "충격", "대박")
+                  "것으로 나타났", "것으로 보인다", "이같은", "에 있어서", "라고 할 수 있", "폭등", "폭락", "충격", "대박",
+                  # 투자 권유형(2026-10-31 경제 계정 정리: "반도체 수혜 지역 투자에 주목하세요"가 실제로 게시됨)
+                  "주목하세요", "주목해야", "사세요", "매수", "수혜주", "수혜 지역", "지금이 기회", "투자하세요", "추천 종목",
+                  "담아 두세요", "올라타")
 # 채널별 말투 금지어(청년 채널: 압박·공포 표현, 2026-10-30). 경제는 설정이 없어 그대로.
 BANNED_PHRASES += tuple(config.CHANNEL_CONFIG.get("banned_phrases", ()))
 TITLE_LINE_MAX = 13  # 템플릿 제목 크기에서 한 줄에 무리 없이 들어가는 글자 수
@@ -93,6 +96,20 @@ CAPTION_DATE_MARK = config.CHANNEL_CONFIG.get("caption_date_mark", "")  # 원문
 _PERIOD_RE = re.compile(r"\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\s*일\s*(?:부터|까지)|(?:오는|지난)\s*\d{1,2}\s*일|한\s*달\s*간|\d+\s*(?:주|개월)\s*간")
 # 표지 subtitle이 "29일"처럼 숫자·날짜 한 덩어리뿐인지(이것만 빼면 아무 말도 안 남는지)
 _BARE_SUBTITLE_RE = re.compile(r"[\d\s.,~\-/%:()]|년|월|일|시|분|원|만|억|명|개|건|세|살|배|주")
+
+# --- 2026-10-31 경제 계정 정리(캡션이 "기사제목 - 매체명" + #경제 #카드뉴스, 해시태그 한자, "이런 일이일까요") ---
+# Google News 제목 끝의 " - 매체명"·"| 매체명" 꼬리표. 모델에 넘기기 전에 떼고, 캡션에 남아 있으면 실패.
+_OUTLET_TAIL_RE = re.compile(r"\s+(?:-|–|—|\||ㅣ)\s*[^\s\-|–—ㅣ][^\n\-|–—ㅣ]{0,24}$")
+_CAPTION_TAIL_RE = re.compile(r"\s(?:-|–|—|\||ㅣ)\s*[가-힣A-Za-z][가-힣A-Za-z0-9 .&]{0,19}$")
+CAPTION_RULES = config.CHANNEL_CONFIG.get("caption_rules", False)  # 훅→3줄 요약→지갑 영향→참고 구조(경제)
+CALC_PREFIX = config.CHANNEL_CONFIG.get("calc_line_prefix", "")  # 이 말로 시작하는 캡션 한 줄은 계산 예시라 원문 숫자 대조에서 뺀다
+HOOK_KEYWORDS = tuple(config.CHANNEL_CONFIG.get("hook_keywords", ()))
+HASHTAG_RULES = {"min": 0, "max": 5, "banned": [], **config.CHANNEL_CONFIG.get("hashtag_rules", {})}  # 인스타 해시태그 상한 5
+_HASHTAG_RE = re.compile(r"[가-힣A-Za-z0-9]+")  # 한자·가나·중국어 간체 등 한글 아닌 CJK 문자 차단
+WALLET_WORDS = ("월급", "대출", "적금", "예금", "세금", "연금", "보험", "이자", "생활비", "지갑", "환급", "연봉", "월세", "전세", "카드값", "저축")
+# 어색한 어미·중복 조사(맞춤법 간단 점검). 반복 낱말("금리 금리")은 경제 채널만 본다(반말 채널은 "진짜 진짜"를 일부러 쓴다).
+_SPELLING_RE = re.compile(r"이일까|이일지|을를|를을|은는|는은|과와|와과")
+_REPEAT_WORD_RE = re.compile(r"(?<![가-힣])([가-힣]{2,})\s+\1(?![가-힣])")
 
 
 class SkipArticle(Exception):
@@ -363,7 +380,8 @@ def check_listing_caption(deck: dict, listing: dict) -> None:
         raise ValueError(f"캡션 ✅ 신청 방법 줄에 공식 기관명({names[0]})이 없음: {how_line!r}")
 
 
-def check_deck(deck: dict, article: str, published: date | None = None, listing: dict | None = None) -> None:
+def check_deck(deck: dict, article: str, published: date | None = None, listing: dict | None = None,
+               title: str = "", outlet: str | None = None) -> None:
     slides = deck.get("slides") or []
     if not SLIDES_MIN <= len(slides) <= SLIDES_MAX:
         raise ValueError(f"슬라이드 수 {len(slides)}장 ({SLIDES_MIN}~{SLIDES_MAX}장이어야 함)")
@@ -418,6 +436,8 @@ def check_deck(deck: dict, article: str, published: date | None = None, listing:
                 raise ValueError(f"{i}장 한자/일본어 혼입: {text!r}")
             if NO_EMOJI_ON_CARDS and _EMOJI_RE.search(text):
                 raise ValueError(f"{i}장 카드 문구에 이모지(이 채널은 카드에 이모지 금지, 캡션에만): {text!r}")
+            check_spelling(text, f"{i}장")
+            check_outlet(text, outlet, f"{i}장")
             if listing:
                 check_listing_text(text, article, listing.get("host"), f"{i}장")
             check_facts(text, article, f"{i}장")
@@ -440,7 +460,10 @@ def check_deck(deck: dict, article: str, published: date | None = None, listing:
         raise ValueError("마지막 장이 표지 제목을 되풀이함")
     if CHECK_CAPTION:
         check_caption(deck.get("caption"), article_numbers)
-        check_facts(deck["caption"], article, "캡션")
+        check_facts(factual_caption(deck["caption"]), article, "캡션")
+    check_spelling(str(deck.get("caption") or ""), "캡션")
+    if CAPTION_RULES:
+        check_caption_rules(str(deck.get("caption") or ""), title, outlet)
     if CAPTION_CLOSING_WORDS:
         lines = [line for line in str(deck.get("caption") or "").splitlines() if line.strip()]
         last = lines[-1] if lines else ""
@@ -450,7 +473,7 @@ def check_deck(deck: dict, article: str, published: date | None = None, listing:
         raise ValueError(f"원문에 날짜·기간이 있는데 캡션에 {CAPTION_DATE_MARK} 기간 줄이 없음(원문 표기 그대로 넣을 것)")
     if listing:
         check_listing_caption(deck, listing)
-        check_listing_text(str(deck.get("caption") or ""), article, listing.get("host"), "캡션")
+        check_listing_text(factual_caption(str(deck.get("caption") or "")), article, listing.get("host"), "캡션")
     check_plan_notice(deck, article)
 
 
@@ -465,9 +488,87 @@ def check_caption(caption, article_numbers: set[str]) -> None:
         raise ValueError(f"캡션 금지 표현 {banned!r}")
     if _STRAY_SCRIPT_RE.search(caption):
         raise ValueError("캡션에 한자/일본어 혼입")
-    made_up = sorted(n for n in _numbers(caption) if len(n.replace(".", "")) >= 2 and n not in article_numbers)
+    made_up = sorted(n for n in _numbers(factual_caption(caption)) if len(n.replace(".", "")) >= 2 and n not in article_numbers)
     if made_up:
         raise ValueError(f"캡션에 원문에 없는 숫자 {made_up}")
+
+
+def factual_caption(caption: str) -> str:
+    """원문 대조 대상 캡션. 계산 예시 줄(calc_line_prefix, 경제 "예)")은 원문에 없는 계산값이 들어가므로 뺀다."""
+    if not CALC_PREFIX:
+        return caption
+    return "\n".join(line for line in caption.splitlines() if not line.strip().startswith(CALC_PREFIX))
+
+
+def strip_outlet(title: str) -> str:
+    """"코스피 소폭 하락 - 생생비즈플러스" → "코스피 소폭 하락"."""
+    return _OUTLET_TAIL_RE.sub("", title or "").strip()
+
+
+def normalize_title(title: str) -> str:
+    """중복·유사도 비교용: 매체 꼬리표·괄호 머리말·문장부호를 빼고 한자 약어를 푼다."""
+    text = normalize_hanja(strip_outlet(title))
+    text = re.sub(r"\[[^\]]*\]|【[^】]*】|<[^>]*>", " ", text)
+    text = re.sub(r"[^\w%.]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def check_spelling(text: str, where: str) -> None:
+    m = _SPELLING_RE.search(text) or (CAPTION_RULES and _REPEAT_WORD_RE.search(text))
+    if m:
+        raise ValueError(f"{where} 어색한 어미·중복 조사 {m.group(0)!r}(맞춤법 확인): {text!r}")
+
+
+def check_outlet(text: str, outlet: str | None, where: str) -> None:
+    """기사 매체 이름이 카드·캡션에 남았는지. 캡션 "참고:" 줄은 발표 기관·보도 표기라 호출 측에서 뺀다."""
+    name = (outlet or "").strip()
+    if len(name) >= 2 and name in text:
+        raise ValueError(f"{where}에 매체 이름 {name!r}(매체명 금지, 출처는 캡션 '참고:' 줄에 기관으로): {text!r}")
+
+
+def check_caption_rules(caption: str, title: str, outlet: str | None) -> None:
+    """경제 캡션 구조: 자체 훅(검색 키워드, 기사 제목 아님) → • 요약 3줄 → "그래서 내 ~은?" 지갑 영향 → "참고: 기관 발표/보도"."""
+    lines = [line.strip() for line in caption.splitlines() if line.strip()]
+    if len(lines) < 6:
+        raise ValueError(f"캡션이 {len(lines)}줄(훅·요약 3줄·지갑 영향·참고 줄 구조여야 함)")
+    for line in lines:
+        if not line.startswith("참고:") and _CAPTION_TAIL_RE.search(line):
+            raise ValueError(f"캡션 줄 끝에 ' - 매체명'·'| 매체명' 같은 꼬리표: {line!r}")
+        if not line.startswith("참고:"):
+            check_outlet(line, outlet, "캡션")
+    hook, plain_title = lines[0], normalize_title(title)
+    if hook.startswith("•") or hook.startswith("참고:"):
+        raise ValueError(f"캡션 첫 줄이 훅 문장이 아님: {hook!r}")
+    if plain_title and (plain_title in normalize_title(hook) or fuzz.ratio(normalize_title(hook), plain_title) >= 70):
+        raise ValueError(f"캡션 첫 줄이 기사 제목과 거의 같음(자체 훅 문장으로 새로 쓸 것): {hook!r}")
+    compact_hook = re.sub(r"\s+", "", hook)
+    if HOOK_KEYWORDS and not any(re.sub(r"\s+", "", k) in compact_hook for k in HOOK_KEYWORDS):
+        raise ValueError(f"캡션 첫 줄에 검색 키워드(예: {', '.join(HOOK_KEYWORDS[:5])})가 없음: {hook!r}")
+    bullets = [line for line in lines if line.startswith("•")]
+    if len(bullets) != 3:
+        raise ValueError(f"캡션 요약이 {len(bullets)}줄(• 로 시작하는 3줄이어야 함)")
+    if not any("그래서" in line and any(w in line for w in WALLET_WORDS) for line in lines):
+        raise ValueError("캡션에 \"그래서 내 월급/대출/적금/세금은?\" 지갑 영향 줄이 없음")
+    if not (lines[-1].startswith("참고:") and re.search(r"(발표|보도)[.)\s]*$", lines[-1])):
+        raise ValueError(f"캡션 마지막 줄이 \"참고: 기관명 발표/보도\"가 아님: {lines[-1]!r}")
+
+
+def clean_hashtags(raw) -> list[str]:
+    """해시태그 3~5개(채널 hashtag_rules, 기본 상한 5), 한글·영문·숫자만. 범용 금지 태그(#경제 #카드뉴스 등)는 빼고 센다."""
+    banned = {b.lower() for b in HASHTAG_RULES["banned"]}
+    tags: list[str] = []
+    for tag in raw if isinstance(raw, list) else []:
+        tag = str(tag).strip().lstrip("#").replace(" ", "")
+        if not tag or tag.lower() in banned or tag in tags:
+            continue
+        if not _HASHTAG_RE.fullmatch(tag):
+            raise ValueError(f"해시태그 #{tag}에 한글·영문·숫자 외 문자(한자·가나 등 금지)")
+        tags.append(tag)
+    tags = tags[: HASHTAG_RULES["max"]]
+    if len(tags) < HASHTAG_RULES["min"]:
+        raise ValueError(f"쓸 수 있는 해시태그가 {len(tags)}개({HASHTAG_RULES['min']}~{HASHTAG_RULES['max']}개 필요, "
+                         f"범용 태그 {', '.join('#' + b for b in HASHTAG_RULES['banned'][:4])} 등은 제외됨)")
+    return tags
 
 
 # 템플릿 장식 문구(창 제목·버튼·필기체 등). 매 게시물이 같은 문구를 되풀이하지 않게 덱마다 모델이 새로 짓는다
@@ -541,13 +642,15 @@ def listing_disclaimer(host: str | None) -> str:
 
 
 def write_deck(title: str, article: str, category: str, hint: str = "", published: date | None = None,
-               listing: dict | None = None) -> dict:
+               listing: dict | None = None, outlet: str | None = None) -> dict:
     """초안 작성 → 편집장 검수(구성·문장 구조·어감·가독성) → 코드 검사.
     검사에 걸리면 걸린 이유를 편집 단계에 돌려줘 고치게 하고, 그래도 안 되면 초안부터 다시 쓴다.
     hint: 지난번 렌더에서 걸린 문제(글자 넘침 등). 다시 쓸 때 피하도록 원문 뒤에 붙인다.
     published: 기사 발행일(KST). "29일"처럼 일만 쓴 날짜를 푸는 기준이고, 없으면 오늘.
     listing: 공식 모집 공고면 {"host": 주최, "days_left": 마감까지 남은 날}(디징, 2026-10-31). 마감은 호출 측이
-    apply_end로 이미 걸렀으므로 기사용 검사(사후 보도·"ended" 판단·카드 문구 속 날짜)는 건너뛴다."""
+    apply_end로 이미 걸렀으므로 기사용 검사(사후 보도·"ended" 판단·카드 문구 속 날짜)는 건너뛴다.
+    outlet: 기사 매체 이름. 카드·캡션에 남으면 실패(제목 끝 " - 매체명"은 모델에 넘기기 전에 뗀다)."""
+    title = strip_outlet(title)
     article = clean_article(article)
     if CHECK_DEADLINE and not listing:  # 사후 보도는 모델을 부르기 전에 거른다(뉴런 절약)
         check_post_event(article, published)
@@ -575,6 +678,11 @@ def write_deck(title: str, article: str, category: str, hint: str = "", publishe
         # 지난 행사 결과 기사 등. 다시 써도 소용없다. 원문에 앞으로의 날짜가 있으면 모델 판단만으로는 건너뛰지 않는다
         if CHECK_DEADLINE and not listing and draft.get("ended") is True and not has_upcoming_date(article, published):
             raise SkipArticle("이미 끝난 행사·모집이라 게시하지 않음(작성 단계 판단)")
+        if CAPTION_RULES:  # 타깃 밖 주제·지갑 영향 없는 기사는 편집 단계로 넘기기 전에 끊는다(뉴런 절약)
+            if str(draft.get("topic_type") or "").strip() == "제외":
+                raise SkipArticle("주제 필터: 종목·시황·인사·행사·환율 트레이딩·정치 발언 기사(topic_type=제외)라 게시하지 않음")
+            if not str(draft.get("wallet_impact") or "").strip():
+                raise SkipArticle("독자 지갑 영향(월급·대출·적금·세금 등)을 말할 수 없는 기사라 게시하지 않음")
         deck, feedback = draft, ""
         for review in range(1, 4):  # 편집 1회 + 검사 실패 시 수정 최대 2회
             request = f"{source}\n\n[슬라이드 초안]\n{json.dumps(deck, ensure_ascii=False)}"
@@ -582,9 +690,8 @@ def write_deck(title: str, article: str, category: str, hint: str = "", publishe
                 request += f"\n\n[검사에서 걸린 문제 — 반드시 고칠 것]\n{feedback}"
             try:
                 deck = _parse(call_text_model(EDITOR_PROMPT, request, max_tokens=8000, model=MODEL))
-                check_deck(deck, article + " " + title, published, listing)
-                hashtags = deck.get("hashtags") if isinstance(deck.get("hashtags"), list) else []
-                tags = " ".join("#" + str(t).lstrip("#").replace(" ", "") for t in hashtags[:8])
+                check_deck(deck, article + " " + title, published, listing, title=title, outlet=outlet)
+                tags = " ".join("#" + t for t in clean_hashtags(deck.get("hashtags")))
                 disclaimer = listing_disclaimer(listing.get("host")) if listing else DISCLAIMER
                 footer = "\n".join(p for p in (disclaimer, tags) if p)
                 final_caption = f"{str(deck.get('caption') or '').strip()}\n\n{footer}".strip()

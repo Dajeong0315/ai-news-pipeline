@@ -53,6 +53,34 @@ def parse_args(argv: list[str]) -> tuple[int | None, bool]:
     return card_id, "--dry-run" in argv
 
 
+def posting_slots() -> tuple[int, str]:
+    """이번 실행에서 올릴 수 있는 게시물 수와 이유(2026-10-31 몰아 게시 방지).
+    9~10월 경제 채널이 하루 3~7개를 3분 간격으로 몰아 올리고 1~2주 비는 일이 반복됐다. 스케줄러가 몇 번 돌든
+    - 하루 게시 수 = 채널 daily_posts(경제 1, 디징 2)를 넘지 않고
+    - 게시 간격이 채널 min_post_gap_hours(디징 6)보다 짧으면 올리지 않으며
+    - 한 번 실행에 1개만 올린다(연속 게시 금지). 디징 두 번째 게시물은 다음 예약 시각(publish_times) 실행이 올린다.
+    오늘 게시 수는 pipeline_events의 게시 성공 기록으로 센다. 조회에 실패하면 올리지 않는다(안전한 쪽)."""
+    daily = int(config.CHANNEL_CONFIG.get("daily_posts") or 0)
+    gap = float(config.CHANNEL_CONFIG.get("min_post_gap_hours") or 0)
+    if not daily:  # 하루 게시 수를 정하지 않은 채널(옛 방식)은 제한 없음
+        return 99, ""
+    now = datetime.now(KST)
+    since = min(now.replace(hour=0, minute=0, second=0, microsecond=0), now - timedelta(hours=gap))
+    rows = (
+        get_client().table("pipeline_events").select("created_at")
+        .eq("channel", config.CHANNEL).eq("stage", "publish").eq("status", "success")
+        .gte("created_at", since.astimezone(timezone.utc).isoformat()).order("created_at", desc=True)
+        .execute().data or []
+    )
+    times = [datetime.fromisoformat(r["created_at"]).astimezone(KST) for r in rows]
+    today = sum(1 for t in times if t.date() == now.date())
+    if today >= daily:
+        return 0, f"오늘 이미 {today}건 게시(하루 {daily}건)"
+    if gap and times and now - times[0] < timedelta(hours=gap):
+        return 0, f"마지막 게시 {times[0]:%H:%M}에서 {gap:g}시간이 안 지남"
+    return 1, ""
+
+
 def main(argv: list[str] | None = None):
     card_id, dry_run = parse_args(sys.argv[1:] if argv is None else argv)
     if dry_run:
@@ -85,6 +113,16 @@ def main(argv: list[str] | None = None):
     log.info("업로드 대상: %d건%s", len(items), f" (card {card_id}만)" if card_id is not None else "")
     if not items:
         events.record("publish", "skipped", count=0, message="게시할 카드세트 없음")
+        return
+    try:
+        slots, reason = posting_slots()
+    except Exception as e:
+        slots, reason = 0, f"게시 이력 조회 실패({e})라 몰아 게시를 막으려고 건너뜀"
+    if not slots:
+        log.info("게시 건너뜀: %s (남은 카드 %d건)", reason, len(items))
+        events.record("publish", "skipped", count=len(items), message=f"게시 건너뜀: {reason}")
+        return
+    items = items[:slots]
 
     for item in items:
         out_dir = Path(item["image_path"])

@@ -53,6 +53,61 @@ def is_recent_duplicate(item: dict, prior_titles: list[str]) -> bool:
     )
 
 
+# --- 중복 게시 차단(2026-10-31) ---
+# 10/2에 "코스피 소폭 하락" 3개, "중국-미국 협의" 2개처럼 같은 기사가 카테고리만 달리해 여러 번 올라갔다. 위 검사는
+# 15자로 잘린 cards.final_title만 봐서 놓쳤다. 최근 7일 카드(게시·미게시 모두)의 기사 원문 제목·URL과 비교한다.
+DUP_LOOKBACK_DAYS = 7
+DUP_TITLE_THRESHOLD = 80  # 정규화한 제목 유사도(0~100)
+_KEY_NUMBER_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(%p|%|bp|조|억|만|천|원|배|명|건|달러|포인트|선)?")
+_TOPIC_STOPWORDS = {"오늘", "올해", "내년", "지난해", "전년", "대비", "기록", "발표", "전망", "이유", "정부", "한국", "국내"}
+
+
+def _key_numbers(title: str) -> set[str]:
+    """단위가 붙은 수치, 또는 세 자리 이상 수(연도 제외). "2,550선"과 "2,550"은 같은 수로 본다."""
+    found = set()
+    for number, unit in _KEY_NUMBER_RE.findall(title):
+        digits = number.replace(",", "")
+        if unit or (len(digits.split(".")[0]) >= 3 and not re.fullmatch(r"(19|20)\d\d", digits)):
+            found.add(digits)
+    return found
+
+
+def _topic_words(title: str) -> set[str]:
+    return {w for w in re.findall(r"[가-힣A-Za-z]{2,}", title) if w not in _TOPIC_STOPWORDS}
+
+
+def duplicate_reason(item: dict, history: list[dict]) -> str | None:
+    """같은 기사 URL, 정규화 제목 유사도 80 이상, 같은 핵심 수치 + 같은 주제어면 중복. 걸린 이유를 돌려준다."""
+    import slide_writer  # slide_writer가 config를 읽어 채널 설정을 잡으므로 함수 안에서 불러 순환 import를 피한다
+
+    title = slide_writer.normalize_title(item["title"])
+    numbers, words = _key_numbers(slide_writer.strip_outlet(item["title"])), _topic_words(title)
+    for prev in history:
+        if prev.get("id") == item.get("id"):
+            continue
+        if item.get("url") and item["url"] == prev.get("url"):
+            return f"같은 기사 URL(이전: {prev['title'][:30]})"
+        other = slide_writer.normalize_title(prev["title"])
+        score = fuzz.token_sort_ratio(title, other)
+        if score >= DUP_TITLE_THRESHOLD:
+            return f"제목 유사도 {score:.0f}(이전: {prev['title'][:30]})"
+        shared = numbers & _key_numbers(slide_writer.strip_outlet(prev["title"]))
+        if shared and words & _topic_words(other):
+            return f"같은 핵심 수치 {sorted(shared)}·주제어 {sorted(words & _topic_words(other))[:3]}(이전: {prev['title'][:30]})"
+    return None
+
+
+def recent_posted_items(days: int = DUP_LOOKBACK_DAYS) -> list[dict]:
+    """최근 days일 이 채널 카드의 원본 기사(id·title·url). 인스타에서 지운 게시물도 기록이 남아 있어 같이 막는다."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cards = (get_client().table("cards").select("news_item_id").in_("category", list(config.CATEGORIES))
+             .gte("created_at", since).execute().data or [])
+    ids = [c["news_item_id"] for c in cards if c.get("news_item_id")]
+    if not ids:
+        return []
+    return get_client().table("news_items").select("id,title,url").in_("id", ids).execute().data or []
+
+
 def choose_with_editorial_model(category: str, candidates: list[dict]) -> int | None:
     """조회수 데이터가 없으므로 영향도·시의성·설명 가능성으로 편집 판단을 한다."""
     choices = [
@@ -73,18 +128,35 @@ def choose_with_editorial_model(category: str, candidates: list[dict]) -> int | 
     return picked["id"] if picked.get("id") in candidate_ids else None
 
 
-def eligible_candidates(category: str) -> list[dict]:
+def eligible_candidates(category: str, posted: list[dict] | None = None) -> list[dict]:
     history = recent_titles(category)
     # 채널이 정한 제목 제외어(예: 청년 채널 대외활동의 "수상", "성료" — 이미 끝난 대회는 모집 정보가 아니다)
     excluded = config.CHANNEL_CONFIG.get("exclude_title_words", {}).get(category, [])
-    return [
-        item for item in fetch_candidates(category)
-        if not is_recent_duplicate(item, history) and not any(word in item["title"] for word in excluded)
-    ]
+    posted = recent_posted_items() if posted is None else posted
+    kept = []
+    for item in fetch_candidates(category):
+        if is_recent_duplicate(item, history) or any(word in item["title"] for word in excluded):
+            continue
+        if (pattern := excluded_topic(item["title"])):
+            log.info("[%s] 주제 필터 제외(%s): %s", category, pattern, item["title"])
+            continue
+        if (reason := duplicate_reason(item, posted + kept)):  # 같은 실행 후보끼리도(카테고리만 다른 같은 기사)
+            log.info("[%s] 중복 차단(%s): %s", category, reason, item["title"])
+            continue
+        kept.append(item)
+    return kept
 
 
-def select_category(category: str) -> dict | None:
-    candidates = eligible_candidates(category)
+# 채널 주제 필터(경제 2026-10-31: 종목·시황·인사·행사·환율 트레이딩·정치 발언 제목). 정규식 목록, 하나라도 맞으면 후보에서 뺀다.
+_EXCLUDE_TOPIC_RES = [re.compile(p) for p in config.CHANNEL_CONFIG.get("exclude_title_patterns", ())]
+
+
+def excluded_topic(title: str) -> str | None:
+    return next((r.pattern for r in _EXCLUDE_TOPIC_RES if r.search(title)), None)
+
+
+def select_category(category: str, posted: list[dict] | None = None) -> dict | None:
+    candidates = eligible_candidates(category, posted)
     if not candidates:
         log.info("[%s] 새롭고 적합한 후보 없음", category)
         events.record("select", "skipped", category=category, count=0, message="새롭고 적합한 후보 없음")
@@ -129,7 +201,10 @@ def choose_across_categories(candidates: list[dict], limit: int) -> list[int]:
 
 def select_daily(limit: int) -> list[dict]:
     """하루 게시 수를 정한 채널(청년, 하루 1~2개): 카테고리별 1건씩이 아니라 전체 후보에서 고른다."""
-    candidates = [item for category in config.CATEGORIES for item in eligible_candidates(category)]
+    posted = recent_posted_items()
+    candidates: list[dict] = []
+    for category in config.CATEGORIES:  # 앞 카테고리 후보와도 비교해 같은 기사가 두 카테고리에서 함께 올라오지 않게
+        candidates += eligible_candidates(category, posted + candidates)
     if not candidates:
         log.info("새롭고 적합한 후보 없음")
         events.record("select", "skipped", count=0, message="새롭고 적합한 후보 없음")
@@ -305,8 +380,10 @@ def main() -> None:
     if daily_posts:
         select_daily(daily_posts)
         return
-    for category in config.CATEGORIES:
-        select_category(category)
+    posted = recent_posted_items()
+    for category in config.CATEGORIES:  # 이번 실행에서 고른 기사도 다음 카테고리의 중복 기준에 넣는다
+        if (selected := select_category(category, posted)):
+            posted.append(selected)
 
 
 if __name__ == "__main__":
