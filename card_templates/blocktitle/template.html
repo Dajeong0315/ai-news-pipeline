@@ -23,6 +23,8 @@
   .tile:nth-child(6n+5) { background: #5BA3E6; transform: rotate(-2deg) translateY(16px); }
   .tile:nth-child(6n+6) { background: #5BA3E6; transform: rotate(2deg) translateY(-10px); }
   .tiles.small .tile { width: 112px; height: 112px; font-size: 80px; }
+  .slide .deco .tile-rows { position: absolute; left: 72px; right: 72px; top: 175px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .slide .deco .tile-rows .tiles { position: static; margin-bottom: 0; justify-content: center; }
   .slide .deco .tiles { left: 72px; right: 72px; top: 470px; justify-content: center; }
   .title { font-size: 84px; font-weight: 800; line-height: 1.24; letter-spacing: -.035em; text-shadow: 0 2px 20px rgba(0,0,0,.35); }
   h2.title { font-size: 68px; }
@@ -47,11 +49,23 @@
 <body><div id="deck"></div>
 <script>
 const tiles = (s, cls = "") => `<span class="tiles ${cls}">${[...String(s)].filter((c) => c.trim()).map((c) => `<span class="tile">${window.esc(c)}</span>`).join("")}</span>`;
+// 표지 타일: 덱 props.cover_tiles(주제 키워드, "\n"으로 줄 나눔)가 있으면 그걸, 없으면 브랜드 워드마크(2026-11-01 운영자: 표지에 계정명 대신 주제가 보이게)
+const coverTiles = (ctx) => {
+  const t = (ctx.props && ctx.props.cover_tiles) || ctx.brand.wordmark;
+  const rows = String(t).split("\n").map((r) => r.replace(/\s/g, "")).filter(Boolean);
+  if (rows.length === 1 && rows[0].length <= 4) return tiles(rows[0]);
+  const longest = Math.max(...rows.map((r) => r.length));
+  // 주제 문구 블록은 글자마다 다른 색(2026-11-01 운영자). 기울기는 기존 .tile 규칙을 그대로 쓴다.
+  const palette = ["#F4EBDA", "#F2C94C", "#ECECEC", "#8DC14B", "#5BA3E6", "#F08A6B", "#B9A7E8", "#9ED9C6", "#F6B8C8", "#D9C7A7"];
+  let k = 0;
+  const row = (r) => `<span class="tiles small">${[...r].map((c) => `<span class="tile" style="background:${palette[k++ % palette.length]}">${window.esc(c)}</span>`).join("")}</span>`;
+  return `<span class="tile-rows small">${rows.map(row).join("")}</span>`;
+};
 window.TEMPLATE = {
   value: (v, small) => tiles(v, small ? "small" : ""),
   deco: (slide, ctx) => `<span class="pill">${ctx.esc(slide.kicker || ctx.brand.series || "Notice")}</span>` +
     (ctx.mascot && ["cover", "stat", "closing"].includes(slide.kind) ? `<img class="cat sticker-img" src="${ctx.esc(ctx.mascot)}">` : "") +
-    (slide.kind === "cover" ? tiles(ctx.brand.wordmark.replace(/\s/g, "")) : ""),
+    (slide.kind === "cover" ? coverTiles(ctx) : ""),
   foot: (slide, ctx) => `<footer class="foot"><span>${ctx.i}/${ctx.n}</span><span class="wordmark">${ctx.esc(ctx.brand.emoji || "")} ${ctx.esc(ctx.brand.wordmark)}</span></footer>`,
 };
 </script>

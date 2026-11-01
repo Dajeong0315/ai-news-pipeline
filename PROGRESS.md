@@ -1,6 +1,26 @@
 # 진행 상태
 
-마지막 갱신: 2026-10-30
+마지막 갱신: 2026-11-01
+
+## 2026-11-01 디징 첫 게시 — IBK기업은행 체험형 청년인턴 (게시 완료)
+
+- 게시 카드: cards 62(news_item 170119), `output/2026-11-01/youth_job-170119/`. 운영자(Aside)가 검토 후 직접 고친 최종본:
+  한국 20대 배경 새로 생성, 표지 블록 주제 문구("기업은행/청년인턴", 글자마다 다른 색), 제목·부제·마지막 장 문구, 캡션(반말·모집 구성·오전 10시 마감·복수지원 불가).
+  사실관계는 IBK 공식 채용 페이지와 대조(390명 = 금융일반 340·디지털IT 50, 10/27~11/16(월) 10:00, 만 19~34세·군복무 최대 3세 연장,
+  AI역량검사 미응시 시 서류 불합격, 분야 복수지원 시 모두 불합격). 고치기 전 원본은 같은 폴더 `_orig_before_aside_fix/`.
+- 릴스: 예전 카드로 만든 reel.mp4는 지우고 새 01~03.png로 `reel.make_reel()` 재생성(9.0초, 2.17MB, 1080×1920, 숫자 카운트업 도입, 음원 없음).
+- 캡션 D-n: 게시일 11/1 KST 기준 D-15라 수정 없음.
+- `publish_instagram.py`에 `--card-id N`(그 카드만)·`--dry-run`(대상만 출력) 추가. 옵션 없이 돌리면 오늘 만든 미게시 youth 카드 2건(62, 65)이 대상이라
+  `--card-id 62 --dry-run`으로 1건 확인 후 게시. 170142(cards 65, 보장형 문구 남음)는 미게시 그대로(11/2 09:30 예약 작업이 지우고 다시 만듦).
+  posting_slots(게시 간격 확인)의 pipeline_events 조회가 이번엔 42초 걸림(원인 미확인, 결과는 1건 가능).
+- 결과(13:30 KST): 캐러셀 media 18360383050264625 https://www.instagram.com/p/DfL4CK3ErbD/ ,
+  릴스 media 17993405238112637 https://www.instagram.com/reel/DfL4MLygZBv/ (Graph API로 @dijing.kr 목록·캡션 확인). cards 62 published=true.
+  게시 코드는 cards.media_id·published_at·publish_status 칸을 채우지 않는다(기존 동작, 경제도 같음).
+- 표지 주제 문구 자동화: `card_templates/blocktitle/template.html`(Aside 수정) — 덱 props.cover_tiles가 있으면 표지 블록에 그 문구를
+  글자마다 다른 색으로, 없으면 브랜드 워드마크(경제 "묘한경제" 그대로). `slide_writer.clean_props`가 cover_tiles를 받음
+  (채널 `cover_tiles: true`일 때만, 최대 2줄·줄당 5자·띄어쓰기 제거·원문에 없는 숫자 버림). 디징 writer_rules에 작성 규칙
+  (기관명 줄임 + 모집 종류, 예 "기업은행\n청년인턴", 표지 title·kicker 반복 금지). 경제는 설정이 없어 만들지 않음.
+- `channels/youth/inbox/README.md`(Aside 수정): 2030과 일부만 겹치는 연령·특정 집단 전용·시군구 지역행사 서포터즈 제외 기준 추가.
 
 ## 2026-10-30 디징 원본을 뉴스 기사 → 공식 모집 공고로 전환 (코드 완료, DB 마이그레이션·실행 검증 전)
 

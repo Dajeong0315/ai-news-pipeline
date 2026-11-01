@@ -474,6 +474,8 @@ def check_caption(caption, article_numbers: set[str]) -> None:
 # (2026-10-30 운영자: "세부 내용은 컨셉에 맞춰 항상 바뀌어야"). 키는 card_templates/README.md 참고.
 PROP_TEXT = {"script": 22, "closing_script": 22, "window_title": 10, "memo_title": 8, "label": 8, "ask": 16}
 PROP_PAIRS = {"buttons": 6, "closing_buttons": 6, "folders": 8}
+COVER_TILES = config.CHANNEL_CONFIG.get("cover_tiles", False)  # 경제는 끔 → 표지 블록은 브랜드 워드마크 그대로
+COVER_TILE_ROWS, COVER_TILE_CHARS = 2, 5
 _SCRIPT_RE = re.compile(r"^[a-z][a-z' .,&!?-]*$")  # 영문 필기체 글꼴(Allura)은 한글이 없다
 
 
@@ -500,6 +502,13 @@ def clean_props(props, article: str) -> dict:
         value = props.get(key)
         if isinstance(value, list) and len(value) == 2 and all(ok(v, limit) for v in value):
             out[key] = [v.strip() for v in value]
+    # 표지 글자 블록 주제 문구(blocktitle 템플릿, 2026-11-01). 켠 채널(디징)만. 최대 2줄, 줄당 5자, 띄어쓰기는 뺀다
+    tiles = props.get("cover_tiles")
+    if COVER_TILES and isinstance(tiles, str):
+        rows = [re.sub(r"\s", "", r) for r in tiles.replace("\\n", "\n").split("\n")]
+        rows = [r for r in rows if r]
+        if 1 <= len(rows) <= COVER_TILE_ROWS and all(ok(r, COVER_TILE_CHARS) for r in rows):
+            out["cover_tiles"] = "\n".join(rows)
     return out
 
 

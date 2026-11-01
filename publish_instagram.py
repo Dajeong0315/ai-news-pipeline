@@ -8,9 +8,12 @@ caption.txt가 들어있는)를 가리킨다. 폴더 하나 = 인스타그램 �
 
 실행:
     python publish_instagram.py
+    python publish_instagram.py --card-id 62 --dry-run   # 카드 하나만, 게시 대상만 출력
+    python publish_instagram.py --card-id 62             # 카드 하나만 게시
 """
 
 import logging
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -27,22 +30,35 @@ log = logging.getLogger("publish_instagram")
 KST = timezone(timedelta(hours=9))
 
 
-def fetch_unpublished() -> list[dict]:
+def fetch_unpublished(card_id: int | None = None) -> list[dict]:
     client = get_client()
     today_start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
-    resp = (
+    query = (
         client.table("cards")
-        .select("id,category,final_title,image_path,publish_order")
+        .select("id,news_item_id,category,final_title,image_path,publish_order")
         .eq("published", False)
         .in_("category", list(config.CATEGORIES))
         .gte("created_at", today_start.isoformat())
-        .order("publish_order")
-        .execute()
     )
-    return resp.data or []
+    if card_id is not None:  # 운영자가 검토한 카드 하나만(2026-11-01 디징 첫 게시: 같은 날 만든 다른 카드가 올라가지 않게)
+        query = query.eq("id", card_id)
+    return query.order("publish_order").execute().data or []
 
 
-def main():
+def parse_args(argv: list[str]) -> tuple[int | None, bool]:
+    """--card-id N: 그 카드만 올린다. --dry-run: 게시 대상만 출력하고 끝낸다."""
+    card_id = int(argv[argv.index("--card-id") + 1]) if "--card-id" in argv else None
+    return card_id, "--dry-run" in argv
+
+
+def main(argv: list[str] | None = None):
+    card_id, dry_run = parse_args(sys.argv[1:] if argv is None else argv)
+    if dry_run:
+        items = fetch_unpublished(card_id)
+        print(f"게시 대상 {len(items)}건 (채널 {config.CHANNEL})")
+        for item in items:
+            print(f"  card {item['id']} · news_item {item['news_item_id']} · {item['category']} · {item['image_path']} · {item['final_title']}")
+        return
     if not config.INSTAGRAM_ACCESS_TOKEN or not config.INSTAGRAM_BUSINESS_ACCOUNT_ID:
         log.warning("INSTAGRAM_ACCESS_TOKEN / INSTAGRAM_BUSINESS_ACCOUNT_ID 미설정, 건너뜀")
         events.record("publish", "skipped", message="인스타그램 토큰/계정 ID 미설정")
@@ -60,8 +76,8 @@ def main():
         return
 
     client = get_client()
-    items = fetch_unpublished()
-    log.info("업로드 대상: %d건", len(items))
+    items = fetch_unpublished(card_id)
+    log.info("업로드 대상: %d건%s", len(items), f" (card {card_id}만)" if card_id is not None else "")
     if not items:
         events.record("publish", "skipped", count=0, message="게시할 카드세트 없음")
 
