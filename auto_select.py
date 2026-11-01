@@ -162,7 +162,10 @@ LISTING_RECENT_DAYS = 30
 LISTING_DUP_THRESHOLD = 90  # 기관만 다른 "체험형 청년인턴 채용" 제목끼리는 78점을 넘어서 기사보다 높게 둔다
 _AMOUNT_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(억|천만|백만|만)\s*원")
 _AMOUNT_UNIT = {"억": 10**8, "천만": 10**7, "백만": 10**6, "만": 10**4}
-LISTING_FIELDS = "id,title,source,url,category,keyword,summary,apply_start,apply_end,official_url,listing,status,published_at"
+# source_type은 generate_cardset이 공고 경로(기사 fetch 안 함·apply_end 마감·공고 캡션 검사)를 고르는 기준이라 꼭 같이 읽는다.
+# 2026-11-01 첫 실행에서 빠져 있어 공고가 기사로 처리됐다(잡알리오 페이지 fetch, D-n·기관명 검사 없음).
+LISTING_FIELDS = ("id,title,source,source_type,url,category,keyword,summary,apply_start,apply_end,official_url,"
+                  "listing,status,published_at")
 
 
 def listing_days_left(item: dict, today: date) -> int:
