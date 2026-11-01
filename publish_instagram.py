@@ -20,6 +20,7 @@ from pathlib import Path
 import config
 import events
 import instagram_client
+import share_to_story
 import telegram_client
 from db import get_client
 
@@ -114,6 +115,9 @@ def main(argv: list[str] | None = None):
             message="인스타그램 게시 완료", detail={"media_id": media_id},
         )
         publish_reel(item, out_dir / "reel.mp4", caption)
+        # 게시물을 스토리로 다시 공유(디징, Business Suite 화면 자동화). 실패해도 예외 없이 알림만 → 캐러셀 게시는 성공 그대로
+        if config.CHANNEL_CONFIG.get("share_post_to_story"):
+            share_to_story.share(media_id, card_id=item["id"], category=item["category"])
 
 
 def publish_reel(item: dict, video: Path, caption: str) -> None:

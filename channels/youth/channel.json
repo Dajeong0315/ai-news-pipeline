@@ -61,6 +61,8 @@
   "daily_posts": 2,
   "reels": true,
   "reel_intro": "dday",
+  "share_post_to_story": false,
+  "fb_page_id": "1334955663042764",
   "banned_phrases": [
     "너만 안 함",
     "너만 모르면",
