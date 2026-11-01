@@ -44,7 +44,8 @@ CHANNELS = {
         "categories": {"index_macro": "금리/대출/물가", "stock": "개별종목(수집 안 함)", "policy_industry": "돈 제도/정책"},
     },
     "youth": {
-        "name": "디징", "handle": "@dijing.kr", "daily_posts": 2,
+        # require_approval: 카드는 운영자 승인([게시]) 뒤에만 게시(2026-11-02). 텔레그램 미리보기·카드 탭 버튼.
+        "name": "디징", "handle": "@dijing.kr", "daily_posts": 2, "require_approval": True, "max_regenerations": 2,
         "categories": {"youth_support": "지원금/제도", "youth_job": "채용/취업·자격증", "youth_activity": "대외활동/공모전"},
     },
 }
@@ -71,6 +72,12 @@ def sb_patch(path: str, params: dict, body: dict) -> list:
     resp = HTTP.patch(
         f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers(), params=params, json=body, timeout=15
     )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def sb_post(path: str, body: dict) -> list:
+    resp = HTTP.post(f"{SUPABASE_URL}/rest/v1/{path}", headers=sb_headers(), json=body, timeout=15)
     resp.raise_for_status()
     return resp.json()
 
@@ -541,7 +548,7 @@ async def dash_cards(day_param: str | None = Query(None, alias="date"), channel:
     start, end = kst_day_range(day)
     cards = sb_get_all(
         "cards",
-        {"select": "id,category,final_title,image_path,published,created_at,news_item_id", "category": ch["category_filter"],
+        {"select": "*", "category": ch["category_filter"],
          "and": f"(created_at.gte.{start},created_at.lt.{end})", "order": "created_at.asc"},
     )
     news_ids = ",".join(str(c["news_item_id"]) for c in cards if c.get("news_item_id"))
@@ -557,6 +564,9 @@ async def dash_cards(day_param: str | None = Query(None, alias="date"), channel:
                 "title": (news.get(c["news_item_id"]) or {}).get("title") or c["final_title"],
                 "url": (news.get(c["news_item_id"]) or {}).get("url"),
                 "published": c["published"],
+                "approval": c.get("approval"),
+                "approval_label": APPROVAL_LABELS.get(c.get("approval")),
+                "approved_by": c.get("approved_by"),
                 "time": to_kst(c["created_at"]).strftime("%H:%M"),
                 "slides": list_slides(c["image_path"]),
             }
@@ -654,6 +664,92 @@ async def dash_overview():
     }
 
 
+# ---------------------------------------------------------------------------
+# 디징 카드 승인(2026-11-02): 텔레그램 [게시][다시 만들기][건너뛰기] 버튼과 대시보드 카드 탭 버튼이 같이 쓴다.
+# cards.approval을 pending에서만 바꾼다(두 곳에서 동시에 눌러도 한 번만 반영). 게시·다시 만들기는 PC의 10분 작업이 한다.
+# ---------------------------------------------------------------------------
+CARD_ACTIONS = {  # 버튼 → (approval 값, 결과 표시)
+    "approve": ("approved", "✅ 게시 승인 · 10분 안에 게시 순서대로 올라가요"),
+    "regenerate": ("regenerate", "🔁 다시 만들기 요청 · 10분 안에 새 카드를 다시 보내요"),
+    "reject": ("rejected", "⏭ 건너뜀 · 게시 안 해요"),
+}
+APPROVAL_LABELS = {"pending": "승인 대기", "approved": "게시 승인됨", "rejected": "건너뜀",
+                   "regenerate": "다시 만드는 중", "replaced": "다시 만든 카드로 대체됨"}
+
+
+def approval_channel(category: str) -> dict | None:
+    for key, cfg in CHANNELS.items():
+        if cfg.get("require_approval") and category in cfg["categories"]:
+            return {"key": key, **cfg}
+    return None
+
+
+def card_action(card_id: int, action: str, by: str) -> tuple[bool, str]:
+    """(성공 여부, 사람에게 보여줄 문장)."""
+    if action not in CARD_ACTIONS:
+        return False, "알 수 없는 동작이에요."
+    rows = sb_get("cards", {"select": "id,category,published,approval,news_item_id", "id": f"eq.{card_id}"})
+    if not rows:
+        return False, "카드를 찾을 수 없어요."
+    card = rows[0]
+    ch = approval_channel(card["category"])
+    if not ch:
+        return False, "승인 절차가 없는 채널 카드예요."
+    if card["published"]:
+        return False, "이미 게시된 카드예요."
+    if card["approval"] != "pending":
+        return False, f"이미 처리된 카드예요({APPROVAL_LABELS.get(card['approval'], card['approval'])})."
+    if action == "regenerate" and card.get("news_item_id"):
+        done = sb_get("cards", {"select": "id", "news_item_id": f"eq.{card['news_item_id']}", "regenerated_from": "not.is.null"})
+        if len(done) >= ch["max_regenerations"]:
+            return False, f"같은 공고는 다시 만들기 최대 {ch['max_regenerations']}번이에요. [게시] 또는 [건너뛰기]로 골라줘."
+    state, label = CARD_ACTIONS[action]
+    changed = sb_patch("cards", {"id": f"eq.{card_id}", "approval": "eq.pending", "published": "is.false"},
+                       {"approval": state, "approved_at": datetime.now(timezone.utc).isoformat(), "approved_by": by[:100]})
+    if not changed:
+        return False, "방금 다른 곳에서 처리됐어요."
+    try:  # 대시보드 타임라인 기록(실패해도 승인은 반영됨)
+        sb_post("pipeline_events", {"run_id": f"webhook-{int(time.time())}", "channel": ch["key"], "stage": "approval",
+                                    "status": "success", "category": card["category"], "card_id": card_id,
+                                    "news_item_id": card.get("news_item_id"), "message": f"{label.split(' · ')[0]} ({by})"})
+    except Exception:
+        pass
+    return True, label
+
+
+def handle_card_callback(callback_query: dict) -> None:
+    callback_id = callback_query["id"]
+    message = callback_query.get("message", {})
+    sender = callback_query.get("from", {})
+    by = "@" + sender["username"] if sender.get("username") else f"telegram:{sender.get('id')}"
+    try:
+        _, action, card_id = callback_query.get("data", "").split(":", 2)
+        card_id = int(card_id)
+    except ValueError:
+        tg_call("answerCallbackQuery", {"callback_query_id": callback_id, "text": "잘못된 요청이에요."})
+        return
+    if action == "noop":
+        tg_call("answerCallbackQuery", {"callback_query_id": callback_id})
+        return
+    ok, text = card_action(card_id, action, by)
+    tg_call("answerCallbackQuery", {"callback_query_id": callback_id, "text": text, "show_alert": not ok})
+    chat_id, message_id = message.get("chat", {}).get("id"), message.get("message_id")
+    if ok and chat_id and message_id:  # 미리보기 글은 그대로 두고 버튼만 결과로 바꾼다
+        tg_call("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": message_id, "reply_markup": {
+            "inline_keyboard": [[{"text": f"{text.split(' · ')[0]} · {by}", "callback_data": f"card:noop:{card_id}"}]]}})
+
+
+@app.post("/api/dash/cards/{card_id}/approval", dependencies=[Depends(require_auth)])
+async def dash_card_approval(card_id: int, request: Request):
+    # 쿠키 로그인 POST라 다른 사이트에서 보낸 요청을 막는다(SameSite=Lax에 더해 Origin 확인)
+    origin = request.headers.get("origin")
+    if origin and urllib.parse.urlparse(origin).netloc != request.headers.get("host"):
+        raise HTTPException(status_code=403, detail="bad origin")
+    body = await request.json()
+    ok, text = card_action(card_id, str(body.get("action", "")), "dashboard")
+    return {"ok": ok, "message": text}
+
+
 @app.post("/api/index")
 @app.post("/webhook")
 async def telegram_webhook(
@@ -666,6 +762,9 @@ async def telegram_webhook(
     update = await request.json()
     callback_query = update.get("callback_query")
     if not callback_query:
+        return {"ok": True}
+    if callback_query.get("data", "").startswith("card:"):
+        handle_card_callback(callback_query)
         return {"ok": True}
 
     callback_id = callback_query["id"]
@@ -948,6 +1047,10 @@ select{color:var(--ink)}
 .quota b{font-size:28px;font-weight:700}.quota span{font-size:13px;color:var(--sub)}
 .set{margin-bottom:16px}
 .slides{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px}
+.apbtns{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.apbtns button{background:var(--surface);box-shadow:var(--shadow),inset 0 0 0 1px var(--sep);border-radius:10px;padding:0 16px;min-height:40px;font-size:15px;font-weight:600;color:var(--tint)}
+.apbtns button.go{background:var(--tint-fill);color:#fff;box-shadow:none}
+.apbtns button:disabled{opacity:.5;cursor:default}
 .slides img{width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:10px;background:var(--fill2);cursor:zoom-in;display:block}
 .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
 .lightbox.on{display:flex}
@@ -1319,6 +1422,7 @@ async function loadCards() {
   const sets = d.cards.map(c => `<div class="panel set">
       <h2><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0">${catChip(c.category)}<span style="min-width:0">${c.url ? `<a href="${safeUrl(c.url)}" target="_blank" rel="noopener" style="text-decoration:none">${esc(c.title)}</a>` : esc(c.title)}</span></span>
       ${c.published ? stChip("게시됨 · " + c.time, "var(--green)", "ok") : stChip("미게시 · " + c.time, "var(--tint)", "dot")}</h2>
+      ${apView(c)}
       ${c.slides.length ? `<div class="slides">${c.slides.map((s, i) => `<img loading="lazy" src="${safeUrl(s)}" alt="${i + 1}번째 카드" data-set="${c.id}" data-i="${i}">`).join("")}</div>` : `<p class="muted">스토리지에 이미지가 없어요 (게시 전에 로컬에서만 만들어진 카드세트예요)</p>`}
     </div>`).join("");
   $("#v-cards").innerHTML = `<div class="toolbar"><div class="datenav"><button id="cPrev" aria-label="이전 날짜">‹</button><select id="cDay" aria-label="날짜">${opts}</select><button id="cNext" aria-label="다음 날짜">›</button><span class="muted">${d.cards.length}세트</span></div></div>
@@ -1327,10 +1431,35 @@ async function loadCards() {
   $("#cDay").onchange = e => { cardsDay = e.target.value; refresh(); };
   $("#cPrev").onclick = () => { if (idx < days.length - 1) { cardsDay = days[idx + 1]; refresh(); } };
   $("#cNext").onclick = () => { if (idx > 0) { cardsDay = days[idx - 1]; refresh(); } };
+  document.querySelectorAll("[data-ap]").forEach(b => b.onclick = () => cardAction(b));
   document.querySelectorAll(".slides img").forEach(img => img.onclick = () => {
     lbList = [...document.querySelectorAll(`.slides img[data-set="${img.dataset.set}"]`)].map(x => x.src);
     lbIdx = +img.dataset.i; openLb();
   });
+}
+// 디징 승인(2026-11-02): 승인 대기 카드에만 버튼. 텔레그램 버튼과 같은 처리(/api/dash/cards/{id}/approval).
+const AP_STATE = {pending: ["var(--orange)", "warn"], approved: ["var(--green)", "ok"], rejected: ["var(--sub)", "idle"],
+  regenerate: ["var(--tint)", "busy"], replaced: ["var(--sub)", "idle"]};
+function apView(c) {
+  if (!c.approval || c.published) return "";
+  const [color, g] = AP_STATE[c.approval] || AP_STATE.pending;
+  const who = c.approved_by && c.approval !== "pending" ? " · " + c.approved_by : "";
+  const chip = `<p style="margin:0 0 10px">${stChip((c.approval_label || c.approval) + who, color, g)}</p>`;
+  if (c.approval !== "pending") return chip;
+  return chip + `<div class="apbtns"><button class="go" data-ap="approve" data-card="${c.id}">게시</button><button data-ap="regenerate" data-card="${c.id}">다시 만들기</button><button data-ap="reject" data-card="${c.id}">건너뛰기</button></div>`;
+}
+async function cardAction(btn) {
+  const label = btn.textContent;
+  if (!confirm(`card ${btn.dataset.card}: ${label}?`)) return;
+  btn.parentElement.querySelectorAll("button").forEach(b => b.disabled = true);
+  try {
+    const r = await fetch(`/api/dash/cards/${encodeURIComponent(btn.dataset.card)}/approval`, {method: "POST",
+      headers: {"Content-Type": "application/json", "Accept": "application/json"}, body: JSON.stringify({action: btn.dataset.ap})});
+    if (r.status === 401) { location.reload(); return; }
+    const d = await r.json();
+    if (!d.ok) alert(d.message);
+  } catch (e) { alert("처리하지 못했어요. 다시 시도해줘."); }
+  refresh();
 }
 function openLb() { $("#lbImg").src = lbList[lbIdx]; $("#lb").classList.add("on"); }
 const closeLb = () => $("#lb").classList.remove("on");

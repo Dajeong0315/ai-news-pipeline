@@ -347,7 +347,8 @@ def select_listings(limit: int) -> list[dict]:
     limit = max(0, limit - len(pending))
     candidates = listing_candidates(today) if limit else []
     if not candidates:
-        reason = f"카드 대기 중인 선정 공고 {len(pending)}건" if pending and not limit else "접수 중인 새 공고 없음"
+        reason = (f"카드 대기 중인 선정 공고 {len(pending)}건" if pending and not limit
+                  else "이번 실행·오늘 만들 카드 수를 다 채움" if not limit else "접수 중인 새 공고 없음")
         log.info(reason)
         events.record("select", "skipped", count=0, message=reason)
         return []
@@ -372,10 +373,23 @@ def select_listings(limit: int) -> list[dict]:
     return selected
 
 
+def listing_run_limit(daily: int) -> int:
+    """이번 실행에서 고를 공고 수. cards_per_run(디징 1)이 있으면 12:00·19:00 실행이 하나씩 만들고,
+    오늘 이미 카드로 만든 공고(다시 만들기 포함 같은 공고는 1건)까지 합쳐 하루 daily_posts를 넘지 않게 한다(2026-11-02 승인 흐름)."""
+    per_run = config.CHANNEL_CONFIG.get("cards_per_run")
+    if not per_run:
+        return daily
+    start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    rows = (get_client().table("cards").select("news_item_id").in_("category", list(config.CATEGORIES))
+            .gte("created_at", start.isoformat()).execute().data or [])
+    made = len({r["news_item_id"] for r in rows if r.get("news_item_id")})
+    return max(0, min(int(per_run), daily - made))
+
+
 def main() -> None:
     daily_posts = config.CHANNEL_CONFIG.get("daily_posts")
     if LISTINGS:
-        select_listings(daily_posts or 2)
+        select_listings(listing_run_limit(daily_posts or 2))
         return
     if daily_posts:
         select_daily(daily_posts)

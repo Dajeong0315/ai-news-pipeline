@@ -24,6 +24,7 @@ import httpx
 from PIL import Image, ImageStat
 
 import auto_select
+import card_preview
 import config
 import events
 import reel
@@ -169,7 +170,7 @@ def listing_article(item: dict, days_left: int) -> str:
     return text
 
 
-def process_item(item: dict, slot: int = 0, history: list[dict] | None = None) -> dict | None:
+def process_item(item: dict, slot: int = 0, history: list[dict] | None = None, folder_suffix: str = "") -> dict | None:
     category = item["category"]
     template = pick_template(category, slot=slot)
     is_listing = item.get("source_type") == "listing"
@@ -215,6 +216,7 @@ def process_item(item: dict, slot: int = 0, history: list[dict] | None = None) -
 
     # 하루 게시 수를 정한 채널은 같은 카테고리가 하루 2건일 수 있어 기사 ID로 폴더를 나눈다.
     folder = f"{category}-{item['id']}" if config.CHANNEL_CONFIG.get("daily_posts") else category
+    folder += folder_suffix  # 다시 만든 카드는 -r1·-r2 폴더(옛 카드 파일·Storage 미리보기를 덮어쓰지 않게)
     out_dir = Path("output") / date.today().isoformat() / folder
     out_dir.mkdir(parents=True, exist_ok=True)
     background = None
@@ -272,48 +274,107 @@ def process_item(item: dict, slot: int = 0, history: list[dict] | None = None) -
     return None
 
 
+def save_card(item: dict, result: dict, publish_order: int, regenerated_from: int | None = None, note: str = "") -> dict:
+    """cards 행을 넣고 미리보기 이미지를 Storage에 올린다. 승인이 필요한 채널(디징)은 pending으로 넣고 텔레그램 승인 요청을 보낸다."""
+    client = get_client()
+    pngs = sorted(result["out_dir"].glob("[0-9][0-9].png"))
+    row = {
+        "news_item_id": item["id"],
+        "category": item["category"],
+        "final_title": item["title"][: config.TITLE_MAX_CHARS],
+        "image_path": str(result["out_dir"]),
+        "publish_order": publish_order,
+        "published": False,
+    }
+    if card_preview.required():
+        row["approval"] = "pending"
+    if regenerated_from:
+        row["regenerated_from"] = regenerated_from
+    card = client.table("cards").insert(row).execute().data[0]
+    log.info("[%s] 카드세트 생성 완료: %s (%d장)", item["category"], result["out_dir"], len(pngs))
+
+    # 대시보드 [카드] 미리보기용. 게시 단계도 같은 경로에 upsert하므로 중복 업로드는 무해하다.
+    try:
+        from instagram_client import upload_to_storage
+        for png in pngs:
+            upload_to_storage(str(png))
+    except Exception as e:
+        log.warning("[%s] 미리보기 이미지 업로드 실패(게시에는 영향 없음): %s", item["category"], e)
+    events.record(
+        "cardset", "success", category=item["category"], count=len(pngs), news_item_id=item["id"],
+        card_id=card["id"], message=f"카드 {len(pngs)}장 렌더링 완료 · {result['template']}",
+        detail={"template": result["template"], "regenerated_from": regenerated_from},
+    )
+    if card_preview.required():
+        card_preview.send_preview(card["id"], result["out_dir"], item["id"], note=note)
+    return card
+
+
+def made_today() -> int:
+    """오늘 카드로 만든 공고 수(다시 만들기는 같은 공고라 1건). 하루 두 번 실행하는 채널의 템플릿 순번용."""
+    start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    rows = (get_client().table("cards").select("news_item_id").in_("category", list(config.CATEGORIES))
+            .gte("created_at", start.isoformat()).execute().data or [])
+    return len({r["news_item_id"] for r in rows if r.get("news_item_id")})
+
+
 def main():
     client = get_client()
     items = fetch_approved_without_cardset()
     log.info("카드세트 생성 대상: %d건", len(items))
 
     publish_order = (client.table("cards").select("id", count="exact").execute().count or 0) + 1
+    # 12:00·19:00에 하나씩 만드는 채널(cards_per_run)은 두 번째 카드가 다른 템플릿이 되게 오늘 만든 수부터 센다
+    first_slot = made_today() if config.CHANNEL_CONFIG.get("cards_per_run") else 0
 
     # 같은 실행 안에서 만든 카드끼리도 중복 검사(기사는 최근 7일 카드 + 이번 실행분, 공고는 선정 단계에서 이미 거름)
     history = auto_select.recent_posted_items() if not auto_select.LISTINGS else None
-    for slot, item in enumerate(items):
+    for slot, item in enumerate(items, start=first_slot):
         result = process_item(item, slot, history)
         if not result:
             continue
         if history is not None:
             history.append(item)
-
-        pngs = sorted(result["out_dir"].glob("[0-9][0-9].png"))
-        card = client.table("cards").insert(
-            {
-                "news_item_id": item["id"],
-                "category": item["category"],
-                "final_title": item["title"][: config.TITLE_MAX_CHARS],
-                "image_path": str(result["out_dir"]),
-                "publish_order": publish_order,
-                "published": False,
-            }
-        ).execute().data[0]
+        save_card(item, result, publish_order)
         publish_order += 1
-        log.info("[%s] 카드세트 생성 완료: %s (%d장)", item["category"], result["out_dir"], len(pngs))
 
-        # 대시보드 [카드] 미리보기용. 게시 단계도 같은 경로에 upsert하므로 중복 업로드는 무해하다.
-        try:
-            from instagram_client import upload_to_storage
-            for png in pngs:
-                upload_to_storage(str(png))
-        except Exception as e:
-            log.warning("[%s] 미리보기 이미지 업로드 실패(게시에는 영향 없음): %s", item["category"], e)
-        events.record(
-            "cardset", "success", category=item["category"], count=len(pngs), news_item_id=item["id"],
-            card_id=card["id"], message=f"카드 {len(pngs)}장 렌더링 완료 · {result['template']}",
-            detail={"template": result["template"]},
-        )
+
+def regenerate(card: dict) -> dict | None:
+    """[다시 만들기] 요청(cards.approval='regenerate') 카드를 같은 공고로 새로 만들고 다시 승인 요청한다.
+    같은 공고 최대 max_regenerations(2)회. 옛 카드는 replaced. 실패하면 옛 카드를 pending으로 되돌려 다시 고를 수 있게 한다."""
+    client = get_client()
+    limit = int(config.CHANNEL_CONFIG.get("max_regenerations") or 2)
+    done = (client.table("cards").select("id").eq("news_item_id", card["news_item_id"])
+            .not_.is_("regenerated_from", "null").execute().data or [])
+    if len(done) >= limit:
+        client.table("cards").update({"approval": "pending"}).eq("id", card["id"]).execute()
+        events.record("approval", "skipped", card_id=card["id"], message=f"다시 만들기 {limit}회를 다 써서 기존 카드로 되돌림")
+        _notify(f"다시 만들기 {limit}회를 다 써서 card {card['id']}를 그대로 둠([게시] 또는 [건너뛰기]로 골라줘)", card["id"])
+        return None
+    rows = client.table("news_items").select("*").eq("id", card["news_item_id"]).execute().data or []
+    if not rows:
+        client.table("cards").update({"approval": "rejected"}).eq("id", card["id"]).execute()
+        return None
+    item = rows[0]
+    n = len(done) + 1
+    log.info("[%s] card %s 다시 만들기 %d/%d: %s", item["category"], card["id"], n, limit, item["title"])
+    result = process_item(item, slot=made_today() + n, folder_suffix=f"-r{n}")
+    if not result:
+        client.table("cards").update({"approval": "pending"}).eq("id", card["id"]).execute()
+        _notify(f"card {card['id']} 다시 만들기 실패, 기존 카드로 되돌림(이유는 대시보드 오늘 탭 기록)", card["id"])
+        return None
+    publish_order = (client.table("cards").select("id", count="exact").execute().count or 0) + 1
+    new = save_card(item, result, publish_order, regenerated_from=card["id"], note=f"다시 만든 카드 {n}/{limit}")
+    client.table("cards").update({"approval": "replaced"}).eq("id", card["id"]).execute()
+    return new
+
+
+def _notify(text: str, card_id: int) -> None:
+    try:
+        import telegram_client
+        telegram_client.send_message(text, reply_markup=telegram_client.card_keyboard(card_id))
+    except Exception as e:
+        log.warning("텔레그램 알림 실패: %s", e)
 
 
 if __name__ == "__main__":

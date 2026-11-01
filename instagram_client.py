@@ -9,6 +9,7 @@ media 컨테이너를 생성 -> 게시하는 2단계로 진행한다.
 이 저장소의 get_instagram_account_id.py가 계정 ID를 찾는 걸 도와준다)
 """
 
+import json
 import time
 from pathlib import Path
 
@@ -84,15 +85,22 @@ def create_carousel_item(image_url: str) -> str:
     return resp.json()["id"]
 
 
-def create_carousel_container(child_ids: list[str], caption: str) -> str:
+def _collab(data: dict, collaborators: list[str] | None) -> dict:
+    """공동 작업자(인스타 사용자명, 최대 3)를 컨테이너 파라미터에 넣는다(2026-11-02). 값은 JSON 배열 문자열."""
+    if collaborators:
+        data["collaborators"] = json.dumps(list(collaborators)[:3])
+    return data
+
+
+def create_carousel_container(child_ids: list[str], caption: str, collaborators: list[str] | None = None) -> str:
     resp = httpx.post(
         f"{GRAPH_BASE}/{config.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media",
-        data={
+        data=_collab({
             "media_type": "CAROUSEL",
             "children": ",".join(child_ids),
             "caption": caption,
             "access_token": config.INSTAGRAM_ACCESS_TOKEN,
-        },
+        }, collaborators),
         timeout=30,
     )
     _raise_with_detail(resp)
@@ -144,37 +152,48 @@ def publish_media(creation_id: str) -> str:
     return resp.json()["id"]
 
 
-def upload_and_publish_carousel(local_paths: list[str], caption: str) -> str:
+def upload_and_publish_carousel(local_paths: list[str], caption: str, collaborators: list[str] | None = None) -> str:
     """여러 장의 카드 이미지를 인스타그램 캐러셀(여러 장 게시물) 하나로 올린다."""
     child_ids = []
     for path in local_paths:
         image_url = upload_to_storage(path)
         child_ids.append(create_carousel_item(image_url))
 
-    container_id = create_carousel_container(child_ids, caption)
+    container_id = create_carousel_container(child_ids, caption, collaborators)
     wait_until_ready(container_id)
     return publish_media(container_id)
 
 
-def upload_and_publish_reel(local_path: str, caption: str, share_to_feed: bool = False) -> str:
+def upload_and_publish_reel(local_path: str, caption: str, share_to_feed: bool = False,
+                            collaborators: list[str] | None = None) -> str:
     """릴스 영상(reel.mp4)을 올린다. 같은 카드가 캐러셀로 피드에 이미 있으므로 기본은 릴스 탭에만 둔다
     (share_to_feed=false). 영상은 서버 처리에 수십 초~몇 분 걸려 이미지보다 오래 기다린다."""
     video_url = upload_to_storage(local_path, content_type="video/mp4")
     resp = httpx.post(
         f"{GRAPH_BASE}/{config.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media",
-        data={
+        data=_collab({
             "media_type": "REELS",
             "video_url": video_url,
             "caption": caption,
             "share_to_feed": "true" if share_to_feed else "false",
             "access_token": config.INSTAGRAM_ACCESS_TOKEN,
-        },
+        }, collaborators),
         timeout=60,
     )
     _raise_with_detail(resp)
     creation_id = resp.json()["id"]
     wait_until_ready(creation_id, max_wait_sec=300, poll_interval_sec=10)
     return publish_media(creation_id)
+
+
+def permalink(media_id: str) -> str | None:
+    """게시물 링크(자료 목록·알림용). 실패하면 None(게시는 이미 끝났으므로)."""
+    try:
+        resp = httpx.get(f"{GRAPH_BASE}/{media_id}", params={"fields": "permalink"}, headers=_auth_header(), timeout=15)
+        _raise_with_detail(resp)
+        return resp.json().get("permalink")
+    except Exception:
+        return None
 
 
 def upload_and_publish(local_path: str, caption: str) -> str:

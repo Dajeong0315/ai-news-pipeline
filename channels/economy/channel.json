@@ -163,5 +163,11 @@
     "07:30"
   ],
   "reels": true,
-  "share_post_to_story": false
+  "share_post_to_story": false,
+  "ig_username": "myohan.economy",
+  "comment_dm": {
+    "keyword": "자료",
+    "caption_line": "댓글에 '자료' 남기면 계산표 DM으로 보내줄게",
+    "hub_url": ""
+  }
 }

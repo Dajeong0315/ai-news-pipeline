@@ -1,4 +1,6 @@
-# 디징(youth) outbox: 스토리 공유 대기 목록
+# 디징(youth) outbox: 스토리 공유 대기 목록 · 댓글 자료 목록
+
+파일 두 개: `stories.json`(스토리 공유, 아래) · `guides.json`(댓글 → 자료 DM, 맨 아래). 둘 다 git에 안 올린다.
 
 2026-11-01부터 디징 캐러셀을 스토리로 "다시 공유"하는 일은 Aside 브라우저 루틴이 맡는다.
 파이프라인의 헤드리스 브라우저(share_to_story.py)는 Meta가 로그인을 풀어 버려서 쓰지 않는다(channel.json `share_post_to_story: false`).
@@ -77,4 +79,35 @@
 - 공유한 게시물 제목·media_id·shared_at, 공유 못 한 항목과 이유, 24시간 넘어 건너뛴 미공유 항목.
 - 금지: 새 게시물 올리기, 홍보하기·광고, 댓글·좋아요, 로그인 시도, 파이프라인 실행, 프로젝트 코드·설정·.env 수정(outbox\stories.json 쓰기만 허용).
 - 끝나면 연 탭은 닫는다.
+```
+
+## 댓글 → 자료 DM: `guides.json` (2026-11-02)
+
+DM 발송은 리틀리가 한다. 파이프라인은 캡션 안내 문구와 이 자료 목록만 만들고, Aside가 노션 허브 아래 하위 페이지를 만든다.
+
+- 캡션 안내 문구: channel.json `comment_dm`(디징 키워드 "가이드", 경제 "자료")의 `caption_line`을 캡션 본문 마지막 친구 태그 줄 바로 앞에 1줄.
+  `hub_url`이 비어 있으면 넣지 않는다. Aside가 노션 허브를 만든 뒤 channel.json `comment_dm.hub_url`을 채우면 그다음 게시부터 들어간다
+  (카드 생성 때 못 넣었으면 게시 직전에 넣는다, 2200자를 넘으면 뺀다).
+- 게시 성공 시 파이프라인(`comment_dm.add_guide`)이 항목을 하나 넣는다. Aside는 `notion_url`만 채우고 다른 필드는 그대로 둔다.
+- 경제 채널은 `channels/economy/outbox/guides.json`(같은 형식, 공고 필드는 대부분 null).
+
+```json
+{
+  "items": [
+    {
+      "media_id": "18360383050264625",
+      "permalink": "https://www.instagram.com/p/DfL4CK3ErbD/",
+      "title": "카드 제목",
+      "target": "대상(공고 원문, 없으면 캡션 📌 줄)",
+      "benefit": "혜택(공고 원문, 없으면 캡션 💼 줄)",
+      "period": "2026-10-27 ~ 2026-11-16",
+      "how_to_apply": "신청 방법(캡션 ✅ 줄)",
+      "materials": "준비물·제출 서류(원문에 있을 때만, 없으면 null)",
+      "cautions": "주의(캡션 ⚠️ 줄)",
+      "official_url": "공식 공고 링크",
+      "published_at": "2026-11-02T12:10:31+09:00",
+      "notion_url": null
+    }
+  ]
+}
 ```

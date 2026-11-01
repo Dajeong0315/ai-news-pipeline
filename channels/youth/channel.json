@@ -63,6 +63,20 @@
   "reel_intro": "dday",
   "share_post_to_story": false,
   "story_queue": true,
+  "ig_username": "dijing.kr",
+  "require_approval": true,
+  "cards_per_run": 1,
+  "approved_publish_window": [
+    "09:00",
+    "23:00"
+  ],
+  "approved_publish_every_min": 10,
+  "max_regenerations": 2,
+  "comment_dm": {
+    "keyword": "가이드",
+    "caption_line": "댓글에 '가이드' 남기면 신청 방법 정리한 거 DM으로 보내줄게",
+    "hub_url": ""
+  },
   "fb_page_id": "1334955663042764",
   "banned_phrases": [
     "너만 안 함",

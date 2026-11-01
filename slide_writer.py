@@ -26,6 +26,7 @@ from datetime import date, datetime, timedelta, timezone
 import httpx
 from rapidfuzz import fuzz
 
+import comment_dm
 import config
 from llm_client import call_text_model
 
@@ -695,6 +696,7 @@ def write_deck(title: str, article: str, category: str, hint: str = "", publishe
                 disclaimer = listing_disclaimer(listing.get("host")) if listing else DISCLAIMER
                 footer = "\n".join(p for p in (disclaimer, tags) if p)
                 final_caption = f"{str(deck.get('caption') or '').strip()}\n\n{footer}".strip()
+                final_caption = comment_dm.add_line(final_caption)  # 댓글 자료 안내 1줄(허브 URL이 있을 때만), 2200자 검사에 포함
                 if len(final_caption) > CAPTION_HARD_MAX:
                     raise ValueError(f"캡션이 고지·해시태그 포함 {len(final_caption)}자(인스타 한도 {CAPTION_HARD_MAX}자) — 본문을 줄일 것")
             except SkipArticle:

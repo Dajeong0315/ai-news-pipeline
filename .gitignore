@@ -22,3 +22,6 @@ backup/
 # 스토리 공유 자동화(share_to_story.py)의 페이스북 로그인 브라우저 프로필·쿠키. 기본 위치는 저장소 밖(%LOCALAPPDATA%\cardnews-fb-profile)이지만 혹시 옮겨도 안 올라가게
 cardnews-fb-profile/
 *.cookies.json
+
+# Aside 운영 기록(성장 실험·노션 허브 작업 메모). 저장소에는 안 올림
+growth/
