@@ -16,6 +16,11 @@ log = logging.getLogger("auto_select")
 ALLOW_EMPTY_PICK = config.CHANNEL_CONFIG.get("allow_empty_pick", False)  # 하루 0건을 허용하는 채널
 LISTINGS = config.CHANNEL_CONFIG.get("source") == "listings"  # 기사 대신 모집 공고를 쓰는 채널(디징, 2026-10-31)
 KST = timezone(timedelta(hours=9))
+# 분야별로 선정 모델에 보여줄 최신 기사 수(경제 40, 2026-11-02 — 20건 상한에 11/2 금리 분야 32건 중 12건이 아예 안 보였다)
+SELECTION_POOL = int(config.CHANNEL_CONFIG.get("selection_pool", config.SELECTION_POOL_PER_CATEGORY))
+# 순위 후보(2026-11-02): 1등이 카드 작성 단계에서 떨어지면 2등·3등… 순서로 시도한다. 하루 시도 수는 max_daily_attempts.
+RANK_SIZE = int(config.CHANNEL_CONFIG.get("rank_size", 1))
+HOLD_TOPICS = tuple(config.CHANNEL_CONFIG.get("hold_topics", ()))  # 제목에 있으면 보류(경제: 청년미래적금, 디징 콜라보 전까지)
 
 
 def fetch_candidates(category: str) -> list[dict]:
@@ -28,7 +33,7 @@ def fetch_candidates(category: str) -> list[dict]:
         .eq("status", "filtered")
         .gte("collected_at", since)
         .order("published_at", desc=True)
-        .limit(config.SELECTION_POOL_PER_CATEGORY)
+        .limit(SELECTION_POOL)
         .execute()
     )
     return response.data or []
@@ -128,20 +133,38 @@ def choose_with_editorial_model(category: str, candidates: list[dict]) -> int | 
     return picked["id"] if picked.get("id") in candidate_ids else None
 
 
-def eligible_candidates(category: str, posted: list[dict] | None = None) -> list[dict]:
+def eligible_candidates(category: str, posted: list[dict] | None = None, rejected: list | None = None) -> list[dict]:
+    """rejected를 넘기면 빠진 후보를 (기사, 이유)로 채운다(dry-run·진단용)."""
+    from collect_news import foreign_reason  # collect_news가 config를 읽으므로 함수 안에서 불러 순환 import를 피한다
+
+    def drop(item: dict, reason: str) -> None:
+        log.info("[%s] %s: %s", category, reason, item["title"])
+        if rejected is not None:
+            rejected.append((item, reason))
+
     history = recent_titles(category)
     # 채널이 정한 제목 제외어(예: 청년 채널 대외활동의 "수상", "성료" — 이미 끝난 대회는 모집 정보가 아니다)
     excluded = config.CHANNEL_CONFIG.get("exclude_title_words", {}).get(category, [])
     posted = recent_posted_items() if posted is None else posted
     kept = []
     for item in fetch_candidates(category):
-        if is_recent_duplicate(item, history) or any(word in item["title"] for word in excluded):
+        if is_recent_duplicate(item, history):
+            drop(item, "최근 카드 제목과 비슷함")
+            continue
+        if (word := next((w for w in excluded if w in item["title"]), None)):
+            drop(item, f"제목 제외어({word})")
+            continue
+        if (reason := foreign_reason(item["title"], item.get("source"))):
+            drop(item, f"해외 매체 제외({reason})")
+            continue
+        if (word := next((w for w in HOLD_TOPICS if w in item["title"]), None)):
+            drop(item, f"보류 주제({word})")
             continue
         if (pattern := excluded_topic(item["title"])):
-            log.info("[%s] 주제 필터 제외(%s): %s", category, pattern, item["title"])
+            drop(item, f"주제 필터 제외({pattern})")
             continue
         if (reason := duplicate_reason(item, posted + kept)):  # 같은 실행 후보끼리도(카테고리만 다른 같은 기사)
-            log.info("[%s] 중복 차단(%s): %s", category, reason, item["title"])
+            drop(item, f"중복 차단({reason})")
             continue
         kept.append(item)
     return kept
@@ -176,13 +199,42 @@ def select_category(category: str, posted: list[dict] | None = None) -> dict | N
     return selected
 
 
+def _choice(item: dict) -> dict:
+    """선정 모델에 보여줄 후보. 구글 뉴스 요약이 "제목&nbsp;&nbsp;매체명"뿐이면 요약은 빼서 토큰을 아낀다."""
+    import slide_writer  # slide_writer가 config를 읽어 채널 설정을 잡으므로 함수 안에서 불러 순환 import를 피한다
+
+    title = slide_writer.strip_outlet(item["title"])
+    summary = (item.get("summary") or "").replace("&nbsp;", " ").strip()
+    choice = {"id": item["id"], "category": config.CATEGORY_LABELS.get(item["category"]), "title": title}
+    if summary and not summary.startswith(title[:20]):
+        choice["summary"] = summary[:200]
+    return choice
+
+
+def rank_across_categories(candidates: list[dict], size: int) -> list[int]:
+    """카테고리를 섞은 후보에 순위를 매겨 최대 size건(2026-11-02). 1등이 카드 작성에서 떨어지면 다음 순위를 쓴다."""
+    choices = [_choice(item) for item in candidates]
+    prompt = (
+        f"너는 {config.CHANNEL_CONFIG['selector_role']}이다. 아래 후보 중 오늘 카드뉴스로 만들 기사를 좋은 순서대로 "
+        f"최대 {size}건 골라 순위를 매겨라. 1등이 쓸 수 없게 되면 2등을 쓰므로 서로 다른 주제로 고른다. "
+        "단순 기업 홍보, 제목만 자극적인 기사는 제외한다. "
+        f"{config.CHANNEL_CONFIG.get('selector_extra', '')} "
+        "JSON만 반환: {\"ids\": [1등 id, 2등 id, ...]}.\n\n"
+        f"후보: {json.dumps(choices, ensure_ascii=False)}"
+    )
+    raw = call_text_model("반드시 유효한 JSON 한 객체만 반환한다.", prompt, max_tokens=160).strip()
+    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    candidate_ids = {item["id"] for item in candidates}
+    ranked: list[int] = []
+    for i in json.loads(raw).get("ids", []):
+        if i in candidate_ids and i not in ranked:
+            ranked.append(i)
+    return ranked[:size]
+
+
 def choose_across_categories(candidates: list[dict], limit: int) -> list[int]:
     """카테고리를 섞은 후보에서 1~limit건. 좋은 기사가 하나뿐이면 1건만 고르게 한다."""
-    choices = [
-        {"id": item["id"], "category": config.CATEGORY_LABELS.get(item["category"]), "title": item["title"],
-         "summary": (item.get("summary") or "")[:200]}
-        for item in candidates
-    ]
+    choices = [_choice(item) for item in candidates]
     # 그날 0건을 허용하는 채널(청년, 2026-10-30): 지역 한정 행사뿐인 날 억지로 1건을 채우지 않는다.
     minimum = 0 if ALLOW_EMPTY_PICK else 1
     empty_note = "올릴 만한 기사가 없으면 {\"ids\": []}로 비워 둔다. " if ALLOW_EMPTY_PICK else ""
@@ -199,21 +251,35 @@ def choose_across_categories(candidates: list[dict], limit: int) -> list[int]:
     return [i for i in json.loads(raw).get("ids", []) if i in candidate_ids][:limit]
 
 
-def select_daily(limit: int) -> list[dict]:
-    """하루 게시 수를 정한 채널(청년, 하루 1~2개): 카테고리별 1건씩이 아니라 전체 후보에서 고른다."""
+def daily_candidates(rejected: list | None = None) -> list[dict]:
     posted = recent_posted_items()
     candidates: list[dict] = []
     for category in config.CATEGORIES:  # 앞 카테고리 후보와도 비교해 같은 기사가 두 카테고리에서 함께 올라오지 않게
-        candidates += eligible_candidates(category, posted + candidates)
+        candidates += eligible_candidates(category, posted + candidates, rejected)
+    return candidates
+
+
+def select_daily(limit: int) -> list[dict]:
+    """하루 게시 수를 정한 채널(경제 하루 1개): 카테고리별 1건씩이 아니라 전체 후보에서 고른다.
+    rank_size가 있으면(경제 5) 순위를 매겨 앞에서 limit건만 선정하고, 나머지 순위는 이벤트 detail.ranking에 남겨
+    카드 작성 단계(generate_cardset)가 1등이 떨어졌을 때 다음 순위를 쓰게 한다."""
+    candidates = daily_candidates()
     if not candidates:
         log.info("새롭고 적합한 후보 없음")
         events.record("select", "skipped", count=0, message="새롭고 적합한 후보 없음")
         return []
+    ranking: list[int] = []
     try:
-        picked_ids = choose_across_categories(candidates, limit)
+        if RANK_SIZE > 1:
+            ranking = rank_across_categories(candidates, max(RANK_SIZE, limit))
+            picked_ids = ranking[:limit]
+        else:
+            picked_ids = choose_across_categories(candidates, limit)
     except Exception as exc:
         log.warning("편집 선택 실패%s: %s", "" if ALLOW_EMPTY_PICK else ", 최신 기사 1건으로 대체", exc)
         picked_ids = []
+    if not ranking and RANK_SIZE > 1 and not ALLOW_EMPTY_PICK:  # 모델 실패 시 최신순을 순위로 쓴다
+        ranking = [item["id"] for item in candidates[:RANK_SIZE]]
     # 0건 허용 채널은 최신 기사로 채우지 않는다(지역 한정 행사가 그대로 올라가는 걸 막으려고)
     selected = [item for item in candidates if item["id"] in picked_ids] or ([] if ALLOW_EMPTY_PICK else candidates[:1])
     if not selected:
@@ -224,9 +290,40 @@ def select_daily(limit: int) -> list[dict]:
         log.info("[%s] 자동 선정: %s", item["category"], item["title"])
         events.record(
             "select", "success", category=item["category"], count=len(candidates), news_item_id=item["id"],
-            message=item["title"], detail={"pool": len(candidates), "editorial_pick": bool(picked_ids), "daily_limit": limit},
+            message=item["title"], detail={"pool": len(candidates), "editorial_pick": bool(picked_ids), "daily_limit": limit,
+                                           "ranking": ranking},
         )
+    titles = {item["id"]: item["title"] for item in candidates}
+    for rank, item_id in enumerate(ranking, 1):
+        log.info("순위 %d: %s", rank, titles.get(item_id))
     return selected
+
+
+def todays_ranking() -> list[int]:
+    """오늘 선정 이벤트에 남긴 순위(경제). 여러 번 선정했으면 마지막 것."""
+    start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    rows = (get_client().table("pipeline_events").select("detail")
+            .eq("channel", config.CHANNEL).eq("stage", "select").eq("status", "success")
+            .gte("created_at", start.isoformat()).order("created_at", desc=True).limit(5).execute().data or [])
+    return next(((r.get("detail") or {}).get("ranking") for r in rows if (r.get("detail") or {}).get("ranking")), [])
+
+
+def next_ranked(tried: set[int], ranking: list[int] | None = None) -> dict | None:
+    """오늘 순위에서 아직 시도하지 않은 다음 기사를 선정 상태로 바꿔 돌려준다. 이미 빠졌거나(rejected) 카드가 된 기사는 건너뛴다."""
+    ranking = todays_ranking() if ranking is None else ranking
+    for rank, item_id in enumerate(ranking, 1):
+        if item_id in tried:
+            continue
+        rows = (get_client().table("news_items").select("id,title,url,source,category,published_at,status")
+                .eq("id", item_id).execute().data or [])
+        if not rows or rows[0]["status"] not in ("filtered", "approved"):
+            continue
+        get_client().table("news_items").update({"status": "approved"}).eq("id", item_id).execute()
+        log.info("[%s] 다음 순위(%d위) 선정: %s", rows[0]["category"], rank, rows[0]["title"])
+        events.record("select", "retry", category=rows[0]["category"], news_item_id=item_id, message=rows[0]["title"],
+                      detail={"rank": rank})
+        return rows[0]
+    return None
 
 
 # --- 모집 공고 선정(디징, 2026-10-31) ---

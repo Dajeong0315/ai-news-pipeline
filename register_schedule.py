@@ -1,7 +1,8 @@
 """채널 설정(channel.json)대로 Windows 작업 스케줄러를 맞춘다(2026-10-31, 11-02 디징 승인 흐름).
 
-- 경제: EconCardNews-Collect(run_collect.bat = auto, 수집~게시 전부, 승인 없음) 하루 1회 publish_times[0](07:30).
-  EconCardNews-Publish(18:00 publish)는 쓰지 않는다(비활성 그대로).
+- 경제: EconCardNews-Collect(run_collect.bat = auto, 수집·선정·카드 + 텔레그램 승인 요청) 하루 1회 publish_times[0](07:30).
+  EconCardNews-Publish(run_publish.bat = publish_instagram.py --approved-only) approved_publish_window(07:30~22:00) 동안
+  10분마다: 다시 만들기 요청 처리 + 승인된 카드만 하루 1건 게시(2026-11-02 승인 흐름 전환).
 - 디징: DijingCardNews-1·2(run_youth.bat = cards, 선정·카드 1건 + 텔레그램 미리보기) publish_times(12:00·19:00).
   DijingCardNews-Publish(run_youth_publish.bat = publish_instagram.py --approved-only) approved_publish_window(09:00~23:00)
   동안 approved_publish_every_min(10)분마다: 다시 만들기 요청 처리 + 승인된 카드만 게시(하루 건수·간격은 posting_slots).
@@ -26,6 +27,7 @@ DAILY_TASKS = {  # 채널 → [(작업 이름, 배치 파일)], publish_times �
     "youth": [("DijingCardNews-1", "run_youth.bat"), ("DijingCardNews-2", "run_youth.bat")],
 }
 REPEAT_TASKS = {  # 채널 → (작업 이름, 배치 파일). 시간 창·간격은 channel.json
+    "economy": ("EconCardNews-Publish", "run_publish.bat"),
     "youth": ("DijingCardNews-Publish", "run_youth_publish.bat"),
 }
 

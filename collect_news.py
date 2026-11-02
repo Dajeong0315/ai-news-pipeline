@@ -44,6 +44,26 @@ def fetch_entries(keyword: str) -> list:
     return feed.entries
 
 
+# 해외 매체 제외(2026-11-02): '전기요금 인상'으로 베트남 매체의 한국어 번역 기사(Vietnam.vn 등)가 후보에 섞였다.
+# 채널 blocked_sources(매체 도메인·이름 일부), 한국 밖 국가 도메인, 한글이 거의 없는 제목을 뺀다.
+BLOCKED_SOURCES = tuple(s.lower() for s in config.CHANNEL_CONFIG.get("blocked_sources", ()))
+_FOREIGN_TLD_RE = re.compile(r"\.(vn|cn|jp|tw|hk|sg|ph|id|th|my|in|ru|de|fr|uk)(?:/|$)")
+_HANGUL_RE = re.compile(r"[가-힣]")
+
+
+def foreign_reason(title: str, source: str | None, source_url: str | None = None) -> str | None:
+    """한국 매체가 아니면 걸린 이유를 돌려준다. source_url이 없는(이미 저장된) 행은 이름·제목만 본다."""
+    name, url = (source or "").lower(), (source_url or "").lower()
+    if (hit := next((b for b in BLOCKED_SOURCES if b in name or b in url), None)):
+        return f"차단 매체({hit})"
+    if url and _FOREIGN_TLD_RE.search(url):
+        return f"해외 도메인({url})"
+    letters = [c for c in title if c.isalpha()]
+    if letters and sum(1 for c in letters if _HANGUL_RE.match(c)) / len(letters) < 0.5:
+        return "한글이 거의 없는 제목"
+    return None
+
+
 def entry_to_row(entry, category: str, keyword: str) -> dict | None:
     title = getattr(entry, "title", None)
     link = getattr(entry, "link", None)
@@ -53,6 +73,8 @@ def entry_to_row(entry, category: str, keyword: str) -> dict | None:
     source = None
     if hasattr(entry, "source") and getattr(entry.source, "title", None):
         source = entry.source.title
+    if foreign_reason(title, source, getattr(getattr(entry, "source", None), "href", None)):
+        return None
 
     published_at = None
     if getattr(entry, "published_parsed", None):

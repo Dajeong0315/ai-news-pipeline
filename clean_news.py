@@ -72,8 +72,14 @@ def age_ok(item: dict) -> bool:
     return (datetime.now(timezone.utc) - dt) <= timedelta(hours=config.MAX_AGE_HOURS)
 
 
+# 채널 min_summary_chars가 있으면 그 값(경제 0, 2026-11-02). 구글 뉴스 RSS 요약은 사실상 "제목&nbsp;&nbsp;매체명"이라
+# 50자 기준이 제목이 짧은 기사를 버리는 규칙으로 작동했다(11/2 "2027 연말정산, 자녀 카드공제 한도…" 49자로 탈락).
+# 본문 분량은 카드 작성 단계의 원문 400자 검사(QA_MIN_ARTICLE_CHARS)가 본다.
+MIN_SUMMARY_CHARS = int(config.CHANNEL_CONFIG.get("min_summary_chars", config.MIN_LENGTH))
+
+
 def length_ok(item: dict) -> bool:
-    return len(item.get("summary") or "") >= config.MIN_LENGTH
+    return len(item.get("summary") or "") >= MIN_SUMMARY_CHARS
 
 
 def cluster_by_category(items: list[dict]) -> list[list[dict]]:

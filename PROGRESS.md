@@ -2,6 +2,29 @@
 
 마지막 갱신: 2026-11-02
 
+## 2026-11-02 경제 주제 선정 보정 · 승인 후 게시 전환 · 429 구분 (코드 완료, 커밋·스케줄 반영. 사실표 작성 v2는 꺼 둠)
+
+- **원인(11/2 07:30 0건)**: 필터가 다 거른 게 아니라 34건 중 편집장 1건이 카드 작성 단계에서 "지갑 영향 없음"으로 떨어졌고 다음 후보로 넘어가지 않았다.
+  작성 출력 예시에 wallet_impact 칸이 없어 칸을 빠뜨리면 탈락하던 것도 확인(연말정산 기사도 같은 이유로 떨어짐) → 출력 예시에 넣고, 칸이 없으면 탈락이 아니라 다시 쓰기.
+- **순위·대체**: 경제 rank_size 5(편집장이 순위 5건, 순위는 select 이벤트 detail.ranking), 1등이 카드 작성에서 떨어지면 `auto_select.next_ranked`로 2등…,
+  하루 max_daily_attempts 3번(텍스트 모델을 부른 시도만, usage 이벤트로 셈). 시도마다 뉴런을 로그·usage 이벤트에 남김(llama 등 messages 형식 모델은 가격표로 추정).
+  선정 기준에 "기사 숫자로 사회초년생(연봉 2,800~3,500만·월급 230~290만) 금액 계산이 되는가", 은행·기업 수익·업계 동향은 뒤로.
+- **필터**: 경제 min_summary_chars 0(구글 뉴스 요약은 "제목+매체명"이라 50자 기준이 짧은 제목을 버렸다, 11/2 33건), 해외 매체 제외(blocked_sources·해외 도메인·한글 적은 제목),
+  selection_pool 40(20건 상한에 금리 분야 32건 중 12건이 안 보였다), hold_topics ["청년미래적금"](디징 콜라보 전까지).
+- **금액 계산**: require_calc — 덱 calculations(재료·식·결과)를 코드가 다시 계산. 재료는 원문 값, 가정은 카드에 밝힌 연봉·월급(calc_persona 범위)·딱 떨어지는 예시 금액만.
+  검증된 결과·가정 금액은 "원문에 없는 숫자"·한 자리 수치 대조에서 뺀다(표기 달라도 값으로). 원문 금액을 옮긴 건 계산으로 안 침. 없으면 한 번 다시 쓰고, 또 없으면 다음 순위.
+- **원문 받기**: IPv4 고정 httpx(trafilatura.fetch_url이 매일경제 등에서 SSL EOF로 몇 분 걸리다 실패), 구글 주소 풀기 한 번 더, 언론사 오류 페이지면 건너뜀.
+- **dry-run(11/2 데이터, DB 쓰기·게시 없음)**: 88 → 묶기 85 → 상한 76 → 필터 56 → 순위 5. 세 번째 실행에서 1위 국민연금 통과(1,242뉴런).
+  결과·진단: `output/_quality_test/결과_요약.md`, `진단_카드품질.md`.
+- **승인 후 게시(경제)**: channel.json require_approval·approved_publish_window 07:30~22:00·every 10분·max_regenerations 2. 07:30 auto는 카드 생성 + 텔레그램 미리보기까지
+  (run_daily가 승인 채널이면 게시 안 함), EconCardNews-Publish = run_publish.bat(publish_instagram.py --approved-only)를 07:30~22:00 10분마다로 바꾸고 켬.
+- **429 구분(디징 09:33)**: 그날 디징 계정 사용량 0/10k였는데 모든 429를 "일일 한도 소진"으로 보고 멈췄다. 이제 응답 본문으로 일일 한도(3036 등)일 때만 그날 중단,
+  나머지 429는 30초→2분→5분 다시 부른 뒤 대체 모델(gpt-oss-120b ↔ llama-3.3). 로그에 계정 앞 4자리. 11:28 170142 다시 만듦 → card 66 pending, 텔레그램 미리보기 보냄(1,724뉴런).
+  모델이 "D‑7"(U+2011)을 써서 D-n 검사에 세 번 걸린 것도 고침(특수 하이픈 → "-").
+- **정리**: 대시보드 채널 설정은 `sync_dashboard_channels.py`가 channel.json에서 만든 `webhook/api/channels.json`을 읽음(하루 1건이면 "1건"), 경제 stock 키 삭제(지난 기록용 retired_categories),
+  logs의 텔레그램 토큰 460곳·인스타 access_token 59곳 가림(새 토큰은 루트 .env TELEGRAM_BOT_TOKEN + Vercel 환경변수, 그다음 set_telegram_webhook.py).
+- **사실표 작성 v2**(`slide_writer.write_deck_v2`, channel.json writer_v2 또는 SLIDE_WRITER_V2=1일 때만): 11/2 시험 4건 중 1건 통과. 비교는 11/3 09:00 한도 초기화 뒤.
+
 ## 2026-11-02 경제 자동 게시 재개 · 디징 승인 후 게시 · 콜라보 게시 · 댓글 자료 DM 준비 (코드 완료, 마이그레이션 적용·디징 스케줄 켬)
 
 - **경제 재개**: 10/31 경제 품질 개선 미커밋분을 먼저 커밋(85da9dd). `register_schedule.py --enable economy` → EconCardNews-Collect Ready, 다음 실행 11/2 07:30.

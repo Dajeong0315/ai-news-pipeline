@@ -27,6 +27,7 @@ import auto_select
 import card_preview
 import config
 import events
+import llm_client
 import reel
 import slide_writer
 from card_templates import images as template_images
@@ -40,12 +41,18 @@ log = logging.getLogger("generate_cardset")
 KST = timezone(timedelta(hours=9))
 TEMPLATES_DIR = Path("card_templates")
 MAX_RENDER_ATTEMPTS = 2  # 글자 넘침이면 슬라이드를 다시 써서 한 번 더 렌더
+# 순위 대체(2026-11-02, 경제): 선정 기사가 카드 작성 단계에서 떨어지면 오늘 순위의 다음 기사로 다시 만든다.
+# 하루 시도는 max_daily_attempts(경제 3)번까지. 텍스트 모델을 부른 시도만 센다(오늘 usage 기록, 수동 재실행 포함).
+# 원문을 못 받아 모델 호출 없이 끝난 시도는 뉴런을 안 써서 세지 않는다.
+FALLBACK = auto_select.RANK_SIZE > 1 and not auto_select.LISTINGS
+MAX_DAILY_ATTEMPTS = int(config.CHANNEL_CONFIG.get("max_daily_attempts") or 0)
+QUOTA_EXHAUSTED = False  # Cloudflare 일일 무료 한도 소진이면 다음 순위도 소용없으니 멈춘다(일시 제한 429는 아님)
 
 
 def pick_template(category: str, day: date | None = None, slot: int = 0) -> str:
-    """하루 3개 게시물이 서로 다른 템플릿이 되고, 같은 카테고리도 날마다 바뀌도록
-    (날짜 순번 + 카테고리 순번)으로 config.CARD_TEMPLATES를 돈다.
-    하루 게시 수를 정한 채널(daily_posts)은 카테고리와 상관없이 그날 몇 번째 게시물인지(slot)로 돈다."""
+    """같은 날 게시물끼리 다른 템플릿이 되고 날마다 바뀌도록 config.CARD_TEMPLATES를 돈다.
+    하루 게시 수를 정한 채널(daily_posts, 경제 1·디징 2)은 그날 몇 번째 카드인지(slot)로,
+    정하지 않은 채널(옛 방식)은 (날짜 순번 + 카테고리 순번)으로 돈다."""
     day = day or datetime.now(KST).date()
     templates = config.CARD_TEMPLATES
     daily_posts = config.CHANNEL_CONFIG.get("daily_posts")
@@ -179,6 +186,8 @@ def process_item(item: dict, slot: int = 0, history: list[dict] | None = None, f
                   detail={"template": template})
 
     def fail(message: str, status: str | None = None) -> None:
+        global QUOTA_EXHAUSTED
+        QUOTA_EXHAUSTED = QUOTA_EXHAUSTED or "일일 무료 한도" in message
         log.error("[%s] %s", category, message)
         events.record("cardset", "failed", category=category, news_item_id=item["id"], message=message)
         if status:  # 공고는 다음 날에도 후보로 남으므로, 다시 해도 안 될 실패는 상태를 바꿔 반복 선정·뉴런 소모를 막는다
@@ -209,7 +218,9 @@ def process_item(item: dict, slot: int = 0, history: list[dict] | None = None, f
             article_text = fetch_article_text(item["url"]) or article_text
     log.info("[%s] 원문 %d자 확보", category, len(article_text))
 
-    give_up = "rejected" if is_listing else None  # 공고만 상태를 바꾼다(기사는 24시간 지나면 저절로 후보에서 빠짐)
+    # 공고는 다음 날에도 후보로 남아서, 순위 대체 채널은 떨어진 기사를 같은 날 다시 고르지 않게 상태를 바꾼다.
+    # 그 밖의 기사는 24시간 지나면 저절로 후보에서 빠진다.
+    give_up = "rejected" if is_listing or FALLBACK else None
     if len(article_text.strip()) < config.QA_MIN_ARTICLE_CHARS:
         fail(f"원문이 QA 최소 분량 미달로 게시하지 않음 ({len(article_text.strip())}자)", status=give_up)
         return None
@@ -232,7 +243,7 @@ def process_item(item: dict, slot: int = 0, history: list[dict] | None = None, f
             fail(f"QA: {e}", status=give_up)
             return None
         except Exception as e:
-            # Cloudflare 한도 소진(429)은 공고 탓이 아니니 선정 상태로 두고 다음 실행에서 다시 만든다
+            # Cloudflare 429(일일 한도·일시 제한)는 공고 탓이 아니니 선정 상태로 두고 다음 실행에서 다시 만든다
             fail(f"슬라이드 내용 생성 실패로 게시하지 않음: {e}", status=None if "429" in str(e) else give_up)
             return None
         try:
@@ -318,6 +329,14 @@ def made_today() -> int:
     return len({r["news_item_id"] for r in rows if r.get("news_item_id")})
 
 
+def attempts_today() -> int:
+    """오늘 이 채널에서 텍스트 모델을 부른 카드 시도 수(pipeline_events usage, 뉴런 > 0)."""
+    start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    rows = (get_client().table("pipeline_events").select("detail")
+            .eq("channel", config.CHANNEL).eq("stage", "usage").gte("created_at", start.isoformat()).execute().data or [])
+    return sum(1 for r in rows if ((r.get("detail") or {}).get("neurons") or 0) > 0)
+
+
 def main():
     client = get_client()
     items = fetch_approved_without_cardset()
@@ -325,13 +344,29 @@ def main():
 
     publish_order = (client.table("cards").select("id", count="exact").execute().count or 0) + 1
     # 12:00·19:00에 하나씩 만드는 채널(cards_per_run)은 두 번째 카드가 다른 템플릿이 되게 오늘 만든 수부터 센다
-    first_slot = made_today() if config.CHANNEL_CONFIG.get("cards_per_run") else 0
+    slot = made_today() if config.CHANNEL_CONFIG.get("cards_per_run") else 0
 
     # 같은 실행 안에서 만든 카드끼리도 중복 검사(기사는 최근 7일 카드 + 이번 실행분, 공고는 선정 단계에서 이미 거름)
     history = auto_select.recent_posted_items() if not auto_select.LISTINGS else None
-    for slot, item in enumerate(items, start=first_slot):
+    queue, tried = list(items), set()
+    while queue:
+        item = queue.pop(0)
+        if FALLBACK and MAX_DAILY_ATTEMPTS and (done := attempts_today()) >= MAX_DAILY_ATTEMPTS:
+            log.warning("오늘 카드 만들기 %d번 시도로 하루 한도(%d번)를 다 써서 멈춤", done, MAX_DAILY_ATTEMPTS)
+            events.record("cardset", "skipped", message=f"하루 시도 {MAX_DAILY_ATTEMPTS}번을 다 씀", detail={"attempts": done})
+            break
+        tried.add(item["id"])
+        neurons_before = llm_client.NEURONS_USED
         result = process_item(item, slot, history)
+        neurons = llm_client.NEURONS_USED - neurons_before
+        log.info("[%s] 이번 시도 텍스트 모델 %.0f 뉴런(실행 누적 %.0f)", item["category"], neurons, llm_client.NEURONS_USED)
+        events.record("usage", "success", category=item["category"], news_item_id=item["id"],
+                      message=f"카드 시도 텍스트 모델 {neurons:.0f} 뉴런", detail={"neurons": round(neurons, 1),
+                                                                         "run_total": round(llm_client.NEURONS_USED, 1)})
+        slot += 1
         if not result:
+            if FALLBACK and not QUOTA_EXHAUSTED and (nxt := auto_select.next_ranked(tried)):
+                queue.append(nxt)
             continue
         if history is not None:
             history.append(item)

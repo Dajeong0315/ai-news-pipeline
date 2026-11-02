@@ -17,6 +17,7 @@ import os
 import time
 import urllib.parse
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -34,23 +35,13 @@ TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 MAX_BACKLOG_DAYS = int(os.environ.get("MAX_BACKLOG_DAYS", 3))
 
 KST = timezone(timedelta(hours=9))
-# 채널(인스타그램 계정)별 대시보드 설정(2026-10-30). Vercel에는 이 파일만 배포되므로
-# channels/<채널>/channel.json의 이름·카테고리를 여기에 옮겨 둔다. 카테고리를 바꾸면 여기도 같이 고칠 것.
-# daily_posts: 하루 게시 수를 정한 채널(세 분야 후보 중 1~N건 선정). None이면 카테고리별 1건.
-CHANNELS = {
-    "economy": {
-        # 2026-10-31 하루 1개·사회초년생 돈 주제로 전환(channel.json과 같이). 카테고리 키는 지난 기록 때문에 그대로.
-        "name": "묘한 경제", "handle": "@myohan.economy", "daily_posts": 1,
-        "categories": {"index_macro": "금리/대출/물가", "stock": "개별종목(수집 안 함)", "policy_industry": "돈 제도/정책"},
-    },
-    "youth": {
-        # require_approval: 카드는 운영자 승인([게시]) 뒤에만 게시(2026-11-02). 텔레그램 미리보기·카드 탭 버튼.
-        "name": "디징", "handle": "@dijing.kr", "daily_posts": 2, "require_approval": True, "max_regenerations": 2,
-        "categories": {"youth_support": "지원금/제도", "youth_job": "채용/취업·자격증", "youth_activity": "대외활동/공모전"},
-    },
-}
-DEFAULT_CHANNEL = "economy"
-CATEGORY_LABELS = {k: v for ch in CHANNELS.values() for k, v in ch["categories"].items()}
+# 채널(인스타그램 계정)별 대시보드 설정. Vercel에는 webhook/ 폴더만 배포되므로 channels/<채널>/channel.json을
+# 직접 못 읽고, sync_dashboard_channels.py가 만든 사본(channels.json, 같은 폴더)을 읽는다(2026-11-02, 하루 게시 수·
+# 카테고리를 channel.json 한 곳에서 관리). daily_posts: 하루 게시 수(분야를 합쳐 1~N건). None이면 카테고리별 1건.
+# require_approval: 운영자 승인([게시]) 뒤에만 게시(디징). retired_categories: 지난 기록 조회·이름 표시용(경제 stock).
+CHANNELS = json.loads((Path(__file__).resolve().parent / "channels.json").read_text(encoding="utf-8"))
+DEFAULT_CHANNEL = next(iter(CHANNELS))
+CATEGORY_LABELS = {k: v for ch in CHANNELS.values() for k, v in {**ch["retired_categories"], **ch["categories"]}.items()}
 
 
 def sb_headers() -> dict:
@@ -174,7 +165,7 @@ def channel_ctx(channel: str | None) -> dict:
         "cfg": cfg,
         "categories": cats,
         "channel_filter": f"eq.{key}",
-        "category_filter": f"in.({','.join(cats)})",
+        "category_filter": f"in.({','.join((*cats, *cfg['retired_categories']))})",  # 지난 기록(경제 stock)도 조회
         "target": cfg["daily_posts"] or len(cats),
     }
 
@@ -1271,7 +1262,7 @@ function channelBoard(ov) {
       const [label, color, g] = STATE[x.state === "waiting" && c.daily_posts && finished ? "skipped" : x.state] || STATE.waiting;
       return `<li style="--c:${color}">${glyph(g)}<span class="lbl">${esc(x.label)}</span><span class="st">${label}</span>${x.title ? `<span class="t">${esc(x.title)}</span>` : ""}</li>`;
     }).join("");
-    const goal = c.daily_posts ? `${c.published}건 <span>(하루 1~${c.daily_posts})</span>` : `${c.published}/${c.target}`;
+    const goal = c.daily_posts ? `${c.published}건 <span>(하루 ${c.daily_posts > 1 ? "1~" : ""}${c.daily_posts})</span>` : `${c.published}/${c.target}`;
     const run = c.last_run ? `마지막 실행 ${esc(c.last_run.when)} ${(EV[c.last_run.status] || [esc(c.last_run.status)])[0]}` : "실행 기록 없음";
     const on = c.key === CH;
     return `<article class="panel chcard${on ? " on" : ""}" data-chgo="${esc(c.key)}">
@@ -1317,7 +1308,7 @@ async function loadToday() {
     <div class="stats">
       ${stat("수집", fmt(k.collected), "Google News RSS")}
       ${stat("정제", fmt(k.cleaned), "중복 제거 후 후보")}
-      ${stat("선정", `${k.selected}<small> / ${k.target}</small>`, CHANNELS[CH].daily_posts ? `하루 1~${CHANNELS[CH].daily_posts}건` : "카테고리별 1건")}
+      ${stat("선정", `${k.selected}<small> / ${k.target}</small>`, CHANNELS[CH].daily_posts ? `하루 ${CHANNELS[CH].daily_posts > 1 ? "1~" : ""}${CHANNELS[CH].daily_posts}건` : "카테고리별 1건")}
       ${stat("게시", `${k.published}<small> / ${k.target}</small>`, "인스타그램")}
     </div>
     <div class="grid k3" style="margin-bottom:16px">${cats}</div>
@@ -1404,8 +1395,8 @@ async function loadCalendar() {
       <div class="panel"><h2>카테고리별 발행 균형 <small>최근 ${n}일 게시 수</small></h2>
         ${d.rows.map(r => `<div class="bal">${catChip(r.key)}<div class="bar" style="--c:${CAT[r.key].c}"><i style="width:${(r.published / maxPub * 100).toFixed(1)}%"></i></div><b>${r.published}<small style="color:var(--sub);font-weight:500"> / ${n}</small></b></div>`).join("")}</div>
       ${d.daily_posts ? `<div class="panel"><h2>하루 게시 목표 <small>${esc(CHANNELS[CH].name)}</small></h2>
-        <div class="quota"><b>1~${d.daily_posts}</b><span>건 / 일</span></div>
-        <p class="muted" style="margin-top:12px">세 분야 후보를 합쳐 좋은 기사가 있으면 하루 최대 ${d.daily_posts}건, 하나뿐이면 1건만 게시해요. 이월 쿼터는 쓰지 않아요.</p></div>`
+        <div class="quota"><b>${d.daily_posts > 1 ? "1~" : ""}${d.daily_posts}</b><span>건 / 일</span></div>
+        <p class="muted" style="margin-top:12px">${Object.keys(CHANNELS[CH].categories).length}개 분야 후보를 합쳐 하루 ${d.daily_posts > 1 ? `최대 ${d.daily_posts}건` : "1건"} 게시해요. 이월 쿼터는 쓰지 않아요.</p></div>`
       : `<div class="panel"><h2>내일 이월 쿼터 <small>get_allowed_quota()</small></h2>
         <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">${d.rows.map(r => `<div class="quota">${catChip(r.key)}<b>${r.quota_tomorrow}</b><span>건</span></div>`).join("")}</div>
         <p class="muted" style="margin-top:12px">발행이 빠진 연속 일수만큼(최대 ${d.max_backlog_days}일) 허용 건수가 늘어나요. 지금 auto 모드는 카테고리당 하루 1건만 선정하므로 참고 지표예요.</p></div>`}

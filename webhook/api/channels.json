@@ -1,0 +1,29 @@
+{
+ "economy": {
+  "name": "묘한 경제",
+  "handle": "@myohan.economy",
+  "daily_posts": 1,
+  "require_approval": true,
+  "max_regenerations": 2,
+  "categories": {
+   "index_macro": "금리/대출/물가",
+   "policy_industry": "돈 제도/정책"
+  },
+  "retired_categories": {
+   "stock": "개별종목(10/31 종료)"
+  }
+ },
+ "youth": {
+  "name": "디징",
+  "handle": "@dijing.kr",
+  "daily_posts": 2,
+  "require_approval": true,
+  "max_regenerations": 2,
+  "categories": {
+   "youth_support": "지원금/제도",
+   "youth_job": "채용/취업·자격증",
+   "youth_activity": "대외활동/공모전"
+  },
+  "retired_categories": {}
+ }
+}

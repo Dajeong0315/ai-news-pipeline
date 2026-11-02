@@ -8,6 +8,7 @@
 import sys
 
 import auto_select
+import card_preview
 import check_usage
 import clean_news
 import collect_listings
@@ -32,7 +33,10 @@ def run_collect_phase() -> None:
 
 def run_publish_phase() -> None:
     generate_cardset.main()
-    publish_instagram.main()
+    # 승인이 필요한 채널(디징, 경제 2026-11-02~)은 카드 생성 + 텔레그램 승인 요청까지만. 게시는 10분 작업
+    # (publish_instagram.py --approved-only)이 승인된 카드만 한다.
+    if not card_preview.required():
+        publish_instagram.main()
     check_usage.main()
 
 
@@ -44,7 +48,7 @@ def run_cards_phase() -> None:
 
 
 def run_auto_phase() -> None:
-    """사람 승인 없이 선정부터 QA·업로드까지 한 번에 실행한다."""
+    """선정부터 QA·업로드까지 한 번에 실행한다. 승인 채널은 카드 생성·승인 요청까지(run_publish_phase)."""
     run_collect_phase()
     run_publish_phase()
     keyword_stats.snapshot()
