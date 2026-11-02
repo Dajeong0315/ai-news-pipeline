@@ -80,7 +80,8 @@ def _with_time(day: str | None, raw: str) -> str | None:
     return datetime(d.year, d.month, d.day, int(m.group(1)), int(m.group(2)), tzinfo=KST).isoformat()
 
 
-def guide_entry(media_id: str, permalink: str | None, title: str, caption: str, item: dict | None) -> dict:
+def guide_entry(media_id: str, permalink: str | None, title: str, caption: str, item: dict | None,
+                guide_notes: list[str] | None = None) -> dict:
     item = item or {}
     info = item.get("listing") or {}
     raw = info.get("raw_text") or ""
@@ -98,6 +99,7 @@ def guide_entry(media_id: str, permalink: str | None, title: str, caption: str, 
         "cautions": _caption_value(caption, "⚠️"),
         "official_url": item.get("official_url") or item.get("url"),
         "caption": caption,
+        "guide_notes": guide_notes or [],  # 카드·캡션에 못 넣고 가이드로 보낸 사실(v2 deck.guide_notes)
         "published_at": datetime.now(KST).isoformat(timespec="seconds"),
         "notion_url": None,
         "notion_page_id": None,

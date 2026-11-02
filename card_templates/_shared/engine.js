@@ -56,12 +56,70 @@
     }
   }
 
+  // --- 강조·장별 배치(2026-11-02 카드 구조 v2) ---
+  // 강조: 문구 속 **단어**를 채널 강조색 형광펜으로 칠한다. 템플릿마다 글자를 넣는 함수가 달라(말풍선·제목 쪼개기 등)
+  // 데이터 단계에서 보이지 않는 표시 문자(U+E000/E001)로 바꿔 두고, 덱 HTML이 다 만들어진 뒤 <mark>로 바꾼다.
+  const HL_OPEN = "", HL_CLOSE = "";
+  const markEmphasis = (v) => typeof v === "string" ? v.replace(/\*\*(.+?)\*\*/g, `${HL_OPEN}$1${HL_CLOSE}`)
+    : Array.isArray(v) ? v.map(markEmphasis)
+    : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, k === "layout" ? x : markEmphasis(x)])) : v;
+  // 배치: slide.layout = {tone: 밝음|어두움|강조색, title_pos: 상단|중앙|하단, margin: 넓게|보통, icon: 이름}.
+  // 템플릿마다 받을 수 있는 값만 반영하고, 범위를 벗어난 값은 무시하고 LAYOUT_LOG에 남긴다(render.js가 경고로 찍음).
+  const TONE = { "밝음": "light", "어두움": "dark", "강조색": "accent" };
+  const POS = { "상단": "top", "중앙": "center", "하단": "bottom" };
+  const MARGIN = { "넓게": "wide", "보통": "normal" };
+  const PHOTO_BG = ["gallery", "moody", "sticker", "darkcenter", "blocktitle", "cutout", "magazine", "edit", "airdrop"];
+  // 11/2 렌더 확인: 큰 마스코트가 아래에 있는 moody·sticker·cutout은 위치를 옮기면 글자와 겹친다
+  const SIMPLE_POS = ["gallery", "darkcenter", "blocktitle", "magazine"];
+  // 오른쪽 위에 자체 장식(리본·컷아웃·사진 액자·메뉴 막대)이 있는 템플릿은 배치 아이콘을 넣지 않는다
+  const ICON_OK = ["gallery", "moody", "darkcenter", "blocktitle", "magazine", "chat", "soft", "folder", "airdrop"];
+  const ICON_PATHS = {
+    "돈": '<circle cx="12" cy="12" r="9"/><path d="M8 8l2 8 2-6 2 6 2-8M7 12h10"/>',
+    "달력": '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    "체크": '<circle cx="12" cy="12" r="9"/><path d="M7.5 12.5l3 3 6-6.5"/>',
+    "경고": '<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.2v.3"/>',
+    "화살표": '<path d="M4 12h15M13 6l6 6-6 6"/>',
+    "집": '<path d="M3.5 11L12 4l8.5 7"/><path d="M6 9.5V20h12V9.5M10 20v-5h4v5"/>',
+    "카드": '<rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M2.5 10h19M6 15h4"/>',
+    "서류": '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
+    "사람": '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1-4 4-6 7.5-6s6.5 2 7.5 6"/>',
+    "비교 저울": '<path d="M12 4v16M7 20h10M5 7h14"/><path d="M5 7l-2.5 6h5zM19 7l-2.5 6h5z"/>',
+  };
+  window.LAYOUT_ICONS = Object.keys(ICON_PATHS);
+  window.LAYOUT_LOG = [];
+  function layoutOf(slide, i, template) {
+    const lay = slide.layout || {}, cls = [], log = (m) => window.LAYOUT_LOG.push(`layout ${i}장 ${m}`);
+    if (lay.tone) {
+      if (!TONE[lay.tone]) log(`tone ${JSON.stringify(lay.tone)} 모름`);
+      else if (!PHOTO_BG.includes(template)) log(`tone ${lay.tone}: ${template}은 사진 배경이 없어 무시`);
+      else cls.push(`tone-${TONE[lay.tone]}`);
+    }
+    if (lay.title_pos) {
+      if (!POS[lay.title_pos]) log(`title_pos ${JSON.stringify(lay.title_pos)} 모름`);
+      else if (!SIMPLE_POS.includes(template) || slide.kind === "cover") log(`title_pos ${lay.title_pos}: ${template}${slide.kind === "cover" ? " 표지" : ""}는 위치 고정이라 무시`);
+      else cls.push(`pos-${POS[lay.title_pos]}`);
+    }
+    if (lay.margin) {
+      if (!MARGIN[lay.margin]) log(`margin ${JSON.stringify(lay.margin)} 모름`);
+      else cls.push(`margin-${MARGIN[lay.margin]}`);
+    }
+    let icon = "";
+    if (lay.icon) {
+      if (!ICON_PATHS[lay.icon]) log(`icon ${JSON.stringify(lay.icon)} 목록에 없음`);
+      else if (!ICON_OK.includes(template)) log(`icon ${lay.icon}: ${template}은 오른쪽 위 장식과 겹쳐 무시`);
+      else icon = `<span class="lay-icon" data-overlap-ok><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[lay.icon]}</svg></span>`;
+    }
+    return { cls: cls.join(" "), icon };
+  }
+
   let T = {};
   window.DOODLES = DOODLES;
   window.esc = esc;
 
   window.renderDeck = function (job) {
     T = window.TEMPLATE || {};
+    job = { ...job, slides: job.slides.map(markEmphasis) };
+    window.LAYOUT_LOG = [];
     const n = job.slides.length;
     const brand = job.brand || {};
     if (job.mascot === false) brand.mascots = {};
@@ -78,12 +136,15 @@
       const inner = T.content ? T.content(slide, ctx, content) : content(slide);
       const foot = T.foot ? T.foot(slide, ctx)
         : `<footer class="foot"><span class="handle">${esc(brand.handle || "")}</span><span class="page">${i}/${n}</span></footer>`;
-      return `<section class="slide k-${slide.kind} ${variant} ${ctx.mascot ? "has-mascot" : "no-mascot"}" data-i="${i}">
-        <div class="bg"><img src="${esc(job.background)}" alt=""></div><div class="shade"></div>
-        <div class="deco">${deco}</div>
+      const lay = layoutOf(slide, i, job.template);
+      return `<section class="slide k-${slide.kind} ${variant} ${ctx.mascot ? "has-mascot" : "no-mascot"} ${lay.cls}" data-i="${i}">
+        <div class="bg"><img src="${esc(job.background)}" alt=""></div><div class="shade"></div><div class="tone"></div>
+        <div class="deco">${deco}${lay.icon}</div>
         <div class="content">${inner}</div>${foot}</section>`;
     }).join("");
-    document.getElementById("deck").innerHTML = html;
+    const deckEl = document.getElementById("deck");
+    deckEl.innerHTML = html.replace(//g, '<mark class="hl">').replace(//g, "</mark>");
+    if (brand.accent) deckEl.style.setProperty("--hl", brand.accent);
     return n;
   };
 

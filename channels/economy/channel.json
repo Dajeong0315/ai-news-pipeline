@@ -179,6 +179,7 @@
   "approved_publish_window": ["07:30", "22:00"],
   "approved_publish_every_min": 10,
   "max_regenerations": 2,
+  "image_prompt_suffix": "set in a Korean city street or a Korean indoor space, no Chinese or Japanese signage, no hanja or kana characters anywhere, objects related to the topic in focus, no close-up faces",
   "reels": true,
   "share_post_to_story": false,
   "ig_username": "myohan.economy",

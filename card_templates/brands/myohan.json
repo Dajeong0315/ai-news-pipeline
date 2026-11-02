@@ -13,5 +13,6 @@
     "list": "../../assets/character/cat-explain.png",
     "quote": "../../assets/character/cat-explain.png",
     "closing": "../../assets/character/cat-cheer.png"
-  }
+  },
+  "accent": "#FFD84A"
 }

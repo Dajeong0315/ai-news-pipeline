@@ -36,8 +36,32 @@ def preview_text(card_id: int, caption: str, item: dict | None, deck: dict, note
         lines.append(f"수집처: {html.escape(item['url'])}")
     if deck.get("collaborators"):
         lines.append("공동 작업자: " + ", ".join("@" + html.escape(c) for c in deck["collaborators"]))
+    lines += review_lines(deck)
     lines += ["", "<b>캡션</b>", html.escape(caption)]
     return "\n".join(lines)[:4000]
+
+
+def review_lines(deck: dict) -> list[str]:
+    """사실표 작성(v2) 덱이면 표지 후보 3개(고른 것 먼저)와 디자이너 검수 3개를 미리보기에 붙인다."""
+    out = []
+    pick = deck.get("cover_pick") or {}
+    passing = [c["title"] for c in deck.get("cover_candidates") or [] if not c.get("problems")]
+    if pick:
+        others = [t for t in passing if t != pick.get("title")][:2]
+        flat = lambda t: html.escape(str(t).replace("\n", " / "))
+        out += ["", f"<b>표지</b> {flat(pick.get('title'))} — {html.escape(pick.get('reason') or '')}"]
+        out += [f"· 다른 후보: {flat(t)}" for t in others]
+    review = [r for r in deck.get("designer_review") or [] if r.get("after") or r.get("error")]
+    if review:
+        out += ["", f"<b>디자이너 검수</b> ({deck.get('designer_neurons', '?')} 뉴런)"]
+        for r in review[:3]:
+            if r.get("error"):
+                out.append(f"· {html.escape(r['error'])}")
+                continue
+            mark = "반영" if r.get("applied") else "보류"
+            out.append(f"· [{mark}] {r.get('slide')}장 {html.escape(str(r.get('field')))}: {html.escape(str(r.get("after")).replace(chr(10), " / "))[:80]}"
+                       f" — {html.escape(str(r.get('reason') or ''))[:60]}")
+    return out
 
 
 def send_preview(card_id: int, out_dir: Path, news_item_id: int | None, note: str = "") -> bool:

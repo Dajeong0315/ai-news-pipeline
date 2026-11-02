@@ -558,9 +558,9 @@ def check_listing_caption(deck: dict, listing: dict) -> None:
 
 def check_deck(deck: dict, article: str, published: date | None = None, listing: dict | None = None,
                title: str = "", outlet: str | None = None, v2: bool = False) -> None:
-    """v2(사실표 작성, 2026-11-02): 글자 수를 템플릿 실제 한계(V2_LIMITS)까지 늘리고, 기사·기관이 밝힌 전망 인용과
-    계산에 쓴 숫자의 반복을 허용한다."""
-    limits, sentence_max = (V2_LIMITS, V2_SENTENCE_MAX) if v2 else (LIMITS, SENTENCE_MAX)
+    """v2(사실표 작성, 2026-11-02): 칸 상한은 V2_LIMITS(장당 60자·3줄은 check_v2), 짧은 명사구 줄을 허용해 문장 끝맺음
+    검사는 tone_errors(합쇼체·기사체만)로 대신하고, 기사·기관이 밝힌 전망 인용과 계산에 쓴 숫자의 반복을 허용한다."""
+    limits = V2_LIMITS if v2 else LIMITS
     slides = deck.get("slides") or []
     if not SLIDES_MIN <= len(slides) <= SLIDES_MAX:
         raise ValueError(f"슬라이드 수 {len(slides)}장 ({SLIDES_MIN}~{SLIDES_MAX}장이어야 함)")
@@ -575,7 +575,9 @@ def check_deck(deck: dict, article: str, published: date | None = None, listing:
         raise ValueError(f"표지 subtitle이 숫자·날짜뿐(무엇인지 말로 쓸 것): {subtitle!r}")
     known = {"cover", "stat", "compare", "point", "list", "quote", "closing"}
     verified = check_calculations(deck, article)
-    article_numbers = _numbers(article)
+    # 계산식에 실제로 쓴 환산 수(12개월·100 등)는 카드에 "× 12개월"처럼 써도 된다
+    formulas = " ".join(str(c.get("formula") or "") for c in deck.get("calculations") or [] if isinstance(c, dict))
+    article_numbers = _numbers(article) | {str(n) for n in _CALC_CONSTANTS if re.search(rf"(?<![\d.]){n}(?![\d.])", formulas)}
     seen: list[str] = []
     number_slides: dict[str, set[int]] = {}
     for i, slide in enumerate(slides, 1):
@@ -607,12 +609,12 @@ def check_deck(deck: dict, article: str, published: date | None = None, listing:
             for line in (slide.get(key) or "").split("\n"):
                 if len(line.strip()) > TITLE_LINE_MAX:
                     raise ValueError(f"{i}장 {key} 한 줄이 {TITLE_LINE_MAX}자 초과(의미 단위로 \\n 줄바꿈 필요): {line!r}")
-        for key in SENTENCE_FIELDS:
+        for key in SENTENCE_FIELDS if not v2 else ():
             for sentence in _SENTENCE_SPLIT_RE.split((slide.get(key) or "").strip()):
                 if not sentence:
                     continue
-                if len(sentence) > sentence_max:
-                    raise ValueError(f"{i}장 {key} 문장이 {sentence_max}자 초과: {sentence!r}")
+                if len(sentence) > SENTENCE_MAX:
+                    raise ValueError(f"{i}장 {key} 문장이 {SENTENCE_MAX}자 초과: {sentence!r}")
                 if BANMAL and _ARTICLE_END_RE.search(sentence):
                     raise ValueError(f"{i}장 {key} 기사체·합쇼체 문장(반말로): {sentence!r}")
                 if not BANMAL and not _POLITE_END_RE.search(sentence):
@@ -949,17 +951,17 @@ def write_deck(title: str, article: str, category: str, hint: str = "", publishe
 # 1단계에서 원문 근거 문장이 붙은 사실표를 뽑고(코드가 근거 문장을 원문과 대조), 2단계는 그 사실표로만 카드를 쓴다.
 # 장마다 사실표 항목을 담았는지, 제목에 핵심 명사가 있는지, 빈말 장이 없는지, 마지막 장이 구체적 행동인지 코드로 본다.
 # 편집 단계는 따로 두지 않고(작성 규칙에 합침) 검사에 걸릴 때만 고쳐 쓰게 해서 호출 수를 줄인다.
+# 카드 구조(같은 날 운영자): 표지 후보 10개 → 코드 조건 검사 → 편집 단계 1개 선택, 장 역할(경제 6장·디징 4~5장),
+# 표지 외 장 60자·3줄·머리글 12자, 장마다 **강조** 1~2개, 장별 layout(렌더러가 반영), 사실 배치 기록(카드·캡션·가이드),
+# 렌더 뒤 디자이너 검수 1회(generate_cardset이 부름).
 # channel.json "writer_v2": true 또는 환경변수 SLIDE_WRITER_V2=1일 때만 쓴다.
 # =====================================================================================================
 WRITER_V2 = os.environ.get("SLIDE_WRITER_V2", "") == "1" or bool(config.CHANNEL_CONFIG.get("writer_v2"))
 FACTS_MODEL = os.environ.get("FACTS_MODEL", MODEL)
-# 템플릿이 실제로 담는 길이(2026-11-02 렌더 테스트: 경제 6종은 본문 160자·목록 44자까지 통과, note는 100자에서 글씨가
-# 너무 작아짐. 디징 chat 템플릿은 목록 36자에서 넘침). 채널 text_limits로 바꾼다.
-_TEXT_LIMITS = {"body": 150, "note": 70, "label": 40, "item": 40, "sentence": 70, **config.CHANNEL_CONFIG.get("text_limits", {})}
-V2_LIMITS = {**LIMITS, "body": _TEXT_LIMITS["body"], "note": _TEXT_LIMITS["note"], "label": _TEXT_LIMITS["label"],
-             "title": 40, "subtitle": 40}
-V2_ITEM_MAX = _TEXT_LIMITS["item"]
-V2_SENTENCE_MAX = _TEXT_LIMITS["sentence"]
+# 칸 길이 상한(강조 표시 ** 포함). 본문은 장당 60자·3줄(check_v2)이 실제 기준이고 여기는 칸 하나의 안전 상한이다.
+# 11/2 처음 정한 "본문 150자까지 완화"는 운영자가 취소(장당 60자로 압축, 넘치는 사실은 캡션·가이드로).
+V2_LIMITS = {**LIMITS, "body": 90, "note": 70, "label": 70, "title": 40, "subtitle": 40}
+V2_ITEM_MAX = 40
 FORECAST_PHRASES = ("오를 가능성", "기대해 볼")  # 누가 한 전망인지 밝히면(인용) v2에서 허용
 _ATTRIBUTION_RE = re.compile(r"(전망했|내다봤|예상했|밝혔|봤어|분석했|따르면|전망이에요|에 따르면)")
 # 정보 없는 문장(빈말). 숫자·고유명사·조건·행동이 하나도 없는 장을 막는 검사와 별도로, 자주 나오는 꼴을 바로 잡는다.
@@ -1028,60 +1030,6 @@ FACTS_EXTRA_ECON = """- "topic_type": "제도/정책" | "금리/대출" | "생�
 FACTS_EXTRA_LISTING = """- "org": 주최 기관 이름 표기 목록(원문에 나온 그대로, 줄임말 포함 예: ["IBK기업은행", "기업은행"])
 """
 
-WRITER_V2_PROMPT = """{intro}
-[사실표]만 가지고 스크롤을 멈추게 하는 캐러셀 카드를 만든다.
-
-[원칙]
-1. 사실표에 있는 것만 쓴다. 모든 장(표지 포함)에 사실표 항목을 1개 이상 담고, 그 장이 담은 항목 id를 "facts": ["F1"]에 적는다.
-   중요한 사실(얼마·누구에게·언제·어떻게)을 빼지 않는다. 한 장에 사실 1~2개.
-2. 표지 title: 제목만 읽어도 무슨 일이고 독자의 돈·상황에서 뭐가 바뀌는지 알게 쓴다. 핵심 주어 + 변화 + 숫자(있으면). 궁금증은 그다음이다.
-   title_terms 중 1개 이상을 그대로 넣는다. 한 줄 12자 이내로 "\\n" 줄바꿈, 최대 3줄.
-   나쁨: "이거 알면 손해 안 봐요?", "국민연금\\n내 손에 얼마가\\n남을까?" / 좋음: "전세대출 이자,\\n월세보다\\n월 5만 원 더", "국민연금 수급자\\n66%는\\n월 60만 원 미만"
-{title_rule}3. 빈말 금지: 숫자·고유명사·조건·행동이 하나도 없는 문장은 쓰지 않는다. "꼼꼼히 확인해요", "관심 가져봐요", "알아두면 좋아요",
-   "고민해 보세요", "~하는 사례예요" 같은 문장 금지.
-4. 마지막 장은 구체적 행동이다: 어디서(기관·사이트·앱) 무엇을 확인·신청하는지. 사실표 "action"을 쓴다. action이 없으면
-   독자가 기억할 숫자 하나를 담은 사실로 끝낸다. 교훈·다짐("~가 중요해요", "준비해야 해요")으로 끝내지 않는다.
-5. 단서·예외·반론이 사실표에 있으면 한 장에 담는다. 독자 지갑에 바로 닿는 사실(공제·환급·지원 대상·조건·금액)을 통계·업계 숫자보다 먼저 담는다.
-   "○○에 따르면", "○○ 집계"의 ○○은 발표한 곳일 뿐 결정한 주체가 아니다(한국은행이 집계한 대출 금리를 "한국은행이 올렸다"고 쓰지 않는다).
-   카드와 캡션에 사실표 id("F1" 등)를 쓰지 않는다. id는 "facts" 칸에만.
-6. 전망: 우리가 미래를 예측하지 않는다. 기사·기관이 밝힌 전망은 "○○은 ~로 내다봤어요"처럼 누가 한 전망인지 밝혀 쓴다.
-7. 같은 사실을 장마다 되풀이하지 않는다(계산에 쓰는 숫자는 다시 나와도 된다).
-8. 한자·일본어 금지. 한글, 숫자, 영어 약어만. 기사체("~했다", "~로 나타났다")·번역투·과장 금지.
-9. {tone}
-{channel_rules}{calc_rule}
-[슬라이드 종류] 필요한 것만 골라 쓴다. 첫 장은 반드시 cover. 모든 장에 "facts" 칸.
-- cover: title(최대 3줄, 줄당 12자), kicker(최대 12자), subtitle(선택, 최대 40자){hook_rule}
-- stat: value(숫자 하나, 8자 이내, 예: "66%"), label(그 숫자가 무엇인지, 최대 {label}자), note(선택, 최대 {note}자)
-- compare: title(최대 2줄), items 2~3개=[{{"label": 최대 12자, "value": 최대 10자}}], note(선택, 최대 {note}자)
-- point: kicker(선택), title(최대 2줄, 줄당 12자), body(최대 {body}자, 문장 3개 이내, 문장당 {sentence}자 이내)
-- list: title(최대 2줄), items(2~4개, 각 최대 {item}자)
-- quote: quote(최대 50자), source(선택)
-- closing: title(최대 2줄), body(선택, 최대 {body}자)
-장수: {slides_min}~{slides_max}장. 할 말이 적으면 적게.
-
-[캡션] {caption_spec}{caption_rule}
-
-[출력] JSON 하나만. 다른 말 금지.
-{{"message": "핵심 메시지 한 문장",{verdict_fields} "slides": [{{"kind": "cover", "title": "...", "facts": ["F1"]}}, ...],{calc_field} "caption": "...", "hashtags": ["{hashtag_example}", "..."],
- "image_prompt": "English. A concrete photographic scene (subject, setting, light, mood) that fits the topic. No text, no logos, no charts."{extra_out}}}"""
-
-V2_CALC_RULE = """
-[금액 계산] 이 계정의 핵심이다. 카드 1장 이상에 사회초년생 기준 원 단위 계산 결과를 넣는다(예: "월급 250만 원이면 한 달 3만 원 더", "1년이면 36만 원").
-- 계산 재료는 사실표 숫자만. 사실표에 없는 값은 가정으로만: 연봉 2,800~3,500만 원 또는 월급 230~290만 원 사이 값, 아니면 딱 떨어지는 예시 금액(대출 1,000만 원 등).
-  가정은 그 카드에 밝힌다("연봉 3,000만 원 기준", "대출 1,000만 원이면").
-- 원문 숫자끼리 빼기만 한 값보다, 독자 한 사람의 한 달·1년 금액이 되는 계산을 먼저 찾는다.
-- 계산식은 "calculations"에 남긴다. 코드가 다시 계산해 틀리면 다시 쓰게 한다.
-  형식: {"slide": 결과가 나오는 장 번호(1부터), "inputs": {"a": {"value": "171만원", "source": "원문"}, "p": {"value": "1,000만 원", "source": "가정", "label": "대출"}},
-         "formula": "a - b"(재료 이름과 + - * / 괄호, 12·100 같은 환산 수만), "result": "5만 원"}
-- 사실표 숫자로 정말 계산할 수 없으면 "calculations": []로 비운다(억지로 만들지 않는다).
-"""
-V2_CAPTION_RULE_ECON = """
-- 요약 3줄("• ")은 제목을 바꿔 말하지 않는다. 줄마다 사실표 항목 1개를 숫자나 조건과 함께 쓴다(세 줄이 서로 다른 사실)."""
-V2_TITLE_RULE_LISTING = """   공고 카드는 기관 이름(org) + 무엇(모집 종류·혜택) + 마감(D-n 또는 날짜)이 표지에서 바로 보여야 한다.
-   기관 이름과 무엇은 title에, 마감은 title·subtitle·kicker 중 한 곳에 쓴다.
-"""
-
-
 def _v2_facts(title: str, article: str, listing: dict | None, model: str) -> dict:
     """1단계 사실표. 근거 문장을 원문과 대조해 틀린 항목은 버리고, 남은 게 3개 미만이면 한 번 더 뽑는다."""
     reader = config.CHANNEL_CONFIG.get("reader", config.CHANNEL_CONFIG["writer_intro"])
@@ -1113,55 +1061,283 @@ def _v2_facts(title: str, article: str, listing: dict | None, model: str) -> dic
     raise SkipArticle(f"원문에서 사실표를 뽑지 못함: {last}")
 
 
-def check_v2(deck: dict, table: dict, listing: dict | None, title: str) -> None:
-    """v2 추가 검사: 장마다 사실표 항목, 제목 핵심 명사, 빈말 장, 마지막 장 행동, 캡션 요약 줄."""
+WRITER_V2_PROMPT = """{intro}
+[사실표]만 가지고 정해진 장 구조로 캐러셀 카드를 만든다.
+
+[원칙]
+1. 사실표에 있는 것만 쓴다. 모든 장에 사실표 항목을 1개 이상 담고 그 id를 "facts": ["F1"]에 적는다.
+   독자 지갑에 바로 닿는 사실(공제·환급·지원 대상·조건·금액)을 통계·업계 숫자보다 먼저 담는다.
+2. "○○에 따르면", "○○ 집계"의 ○○은 발표한 곳일 뿐 결정한 주체가 아니다(한국은행이 집계한 금리를 "한국은행이 올렸다"고 쓰지 않는다).
+3. 빈말 금지: 숫자·고유명사·조건·행동이 하나도 없는 줄은 쓰지 않는다("꼼꼼히 확인해요", "관심 가져봐요", "알아두면 좋아요" 금지).
+4. 전망은 우리가 예측하지 않는다. 기사·기관이 밝힌 전망만 "○○은 ~로 내다봤어요"처럼 누가 했는지 밝혀 쓴다.
+5. 한자·일본어 금지. {tone}
+6. 카드와 캡션에 사실표 id("F1")를 쓰지 않는다. id는 "facts"·"fact_placement" 칸에만.
+{channel_rules}{calc_rule}
+[장 구조] 각 장에 "role"을 적고 이 순서를 지킨다. 사실이 부족한 장은 빼도 되지만 {required}은 꼭 있어야 한다.
+{structure}
+[표지 제목 후보] "title_candidates"에 표지 제목 후보 10개를 쓴다. 코드가 아래 조건을 검사하고 통과한 후보 중 하나를 표지에 넣는다
+(cover 장의 title은 비워 둔다).
+- 공백 포함 18자 이내, "\\n"으로 나눈 2줄, 줄당 9자 안팎
+- 핵심 명사 1개 이상({noun_rule})
+- 구체적 숫자 1개 이상(금액·기간·인원·D-n·%). 숫자는 사실표 숫자이거나 calculations로 계산한 결과만. 지어낸 절약액·시간 금지
+- 추상어 금지: {abstract}
+- 예: {cover_example}
+
+[장 글자]
+- 표지 외 장: 머리글 "title"은 12자 이내. 본문(body·items·label·note·compare 칸을 합친 글자)은 공백 포함 60자 이내, 최대 3줄
+  (body는 "\\n"으로 줄을 나누고, 목록은 항목 하나가 한 줄), 한 줄 20자 안팎. 줄은 짧은 명사구나 짧은 문장으로.
+- 장마다 핵심 단어 1~2개를 **단어**처럼 별표 두 개로 감싼다(body·items·label·note 안에서만. title·value·kicker에는 쓰지 않는다).
+- 60자에 못 넣는 사실은 버리지 말고 캡션 요약 줄이나 가이드로 보낸다.
+  "fact_placement"에 사실표 모든 항목이 어디 들어갔는지 적는다: {{"F1": "2장", "F2": "캡션", "F3": "가이드"}}.
+- 같은 종류 숫자 장(stat·compare)을 연달아 두지 않는다(합친다).
+
+[장 배치] 각 장에 "layout": {{"tone": "밝음|어두움|강조색", "title_pos": "상단|중앙|하단", "margin": "넓게|보통", "icon": 아이콘}}.
+- icon은 이 목록에서만: {icons}
+- tone은 3장 연속 같지 않게. {compare_rule}
+
+[장 종류] cover / stat(value 8자 이내 숫자 하나, label, note) / compare(items 2~3개 {{"label": 12자, "value": 10자}}, note) /
+point(title, body) / list(title, items 2~4개) / closing(title, body){hook_rule}
+
+[캡션] {caption_spec}{caption_rule}
+
+[출력] JSON 하나만. 다른 말 금지.
+{{"message": "핵심 메시지 한 문장", "title_candidates": ["...", "... 10개"],
+ "slides": [{{"role": "표지", "kind": "cover", "title": "", "kicker": "...", "facts": ["F1"], "layout": {{...}}}}, ...],{calc_field}
+ "fact_placement": {{"F1": "2장"}}, "caption": "...", "hashtags": ["{hashtag_example}", "..."],
+ "image_prompt": "English. A concrete photographic scene (subject, setting, light, mood) that fits the topic. No text, no logos, no charts."{extra_out}}}"""
+
+V2_CALC_RULE = """
+[금액 계산] 이 계정의 핵심이다. "내 돈 계산" 장에 사회초년생 기준 원 단위 계산 결과를 넣는다(예: "월급 250만 원이면 한 달 3만 원 더").
+- 계산 재료는 사실표 숫자만. 사실표에 없는 값은 가정으로만: 연봉 2,800~3,500만 원 또는 월급 230~290만 원 사이 값, 아니면 딱 떨어지는 예시 금액(대출 1,000만 원 등).
+  가정은 그 장에 밝힌다("연봉 3,000만 원 기준"). 원문에 이미 있는 금액을 옮기는 건 계산이 아니다.
+- 계산식은 "calculations"에 남긴다. 코드가 다시 계산해 틀리면 다시 쓰게 한다.
+  형식: {"slide": 결과가 나오는 장 번호(1부터), "inputs": {"a": {"value": "171만원", "source": "원문"}, "p": {"value": "1,000만 원", "source": "가정", "label": "대출"}},
+         "formula": "a - b"(재료 이름과 + - * / 괄호, 12·100 같은 환산 수만), "result": "5만 원"}
+- 표지 제목에 금액을 쓰면 그 금액은 "내 돈 계산" 장에서 설명돼야 한다.
+"""
+V2_CAPTION_RULE_ECON = """
+- 요약 3줄("• ")은 제목을 바꿔 말하지 않는다. 줄마다 사실표 항목 1개를 숫자나 조건과 함께 쓴다(세 줄이 서로 다른 사실)."""
+
+# 장 구조(2026-11-02 운영자): 경제 6장·디징 4~5장. role 순서·필수 장을 코드가 검사한다.
+STRUCTURES = {
+    "money": {
+        "roles": ["표지", "무슨 일", "흔한 착각", "내 돈 계산", "이렇게 하면", "전후 비교"],
+        "required": ["표지", "내 돈 계산"],
+        "text": """1 "표지"(cover)
+2 "무슨 일": 기사 핵심 사실 1~2개(누가·무엇이·얼마·언제)
+3 "흔한 착각": 독자가 실제로 하는 오해나 놓치는 것. 사실표에 근거가 있는 것만(없으면 이 장을 뺀다)
+4 "내 돈 계산": 연봉·대출액 등 가정을 밝히고 원 단위 결과
+5 "이렇게 하면": 대처 순서(1→2→3) 또는 확인할 것(list)
+6 "전후 비교": kind "compare". 안 했을 때 vs 했을 때를 숫자로, note에 행동 한 줄(어디서 무엇을)""",
+        "noun_rule": "기사 주제어",
+        "cover_example": '"전세 이자\\n월 5만원 더 내요"',
+    },
+    "listing": {
+        "roles": ["표지", "나 해당돼?", "신청 순서", "준비물·주의", "한눈 요약"],
+        "required": ["표지", "나 해당돼?", "신청 순서"],
+        "text": """1 "표지"(cover): 기관 + 무엇 + 마감
+2 "나 해당돼?": 대상 조건 체크(list)
+3 "신청 순서": 1→2→3, 어디서(list)
+4 "준비물·주의": 준비 서류, 탈락 사유(복수 지원 금지 같은 것)
+5 "한눈 요약"(선택): 마감·인원·링크 위치
+"댓글 '가이드'면 DM" 안내는 카드에 쓰지 않는다(캡션에 코드가 붙인다).""",
+        "noun_rule": "기관 이름 또는 제도·모집 이름",
+        "cover_example": '"IBK 인턴 390명\\n11/16 마감"',
+    },
+}
+COVER_MAX, COVER_LINE_MAX = 18, 11
+CARD_TEXT_MAX, CARD_LINES_MAX, CARD_LINE_MAX, HEADING_MAX = 60, 3, 22, 12
+ABSTRACT_WORDS = ("꿀팁", "알아야 할", "알아야할", "이것", "이거", "몰랐던", "모르면", "필수", "총정리", "비밀", "꼭 알아", "놓치면",
+                  "손해", "무조건", "이렇게", "충격", "대박", "역대급", "알고 보니")
+LAYOUT_TONES, LAYOUT_POS, LAYOUT_MARGIN = ("밝음", "어두움", "강조색"), ("상단", "중앙", "하단"), ("넓게", "보통")
+# 렌더러(card_templates/_shared/engine.js ICON_PATHS)에 있는 아이콘만
+LAYOUT_ICONS = ("돈", "달력", "체크", "경고", "화살표", "집", "카드", "서류", "사람", "비교 저울")
+_EMPH_RE = re.compile(r"\*\*(.+?)\*\*")
+_TEXT_KEYS = ("body", "label", "note", "subtitle")  # 표지 외 장에서 60자·강조를 보는 칸(+ items)
+
+
+def _structure(listing: dict | None) -> dict | None:
+    return STRUCTURES["listing"] if listing else STRUCTURES["money"] if REQUIRE_CALC else None
+
+
+def _card_lines(slide: dict) -> list[str]:
+    """표지 외 장의 본문 줄(강조 표시 포함): body·label·note의 줄 + 목록 항목 + 비교 칸."""
+    lines: list[str] = []
+    for key in ("body", "label", "note"):
+        if isinstance(slide.get(key), str) and slide[key].strip():
+            lines += [ln for ln in slide[key].split("\n") if ln.strip()]
+    for item in slide.get("items") or []:
+        lines.append(" ".join(str(v) for v in item.values()) if isinstance(item, dict) else str(item))
+    return lines
+
+
+def _plain(text: str) -> str:
+    return _EMPH_RE.sub(r"\1", text)
+
+
+def cover_problems(cand: str, terms: set[str], orgs: list[str], article: str, verified: list[float],
+                   listing: dict | None) -> list[str]:
+    """표지 후보 조건 검사. 문제 목록(비면 통과)."""
+    problems = []
+    lines = [ln for ln in cand.split("\n")]
+    flat = "".join(lines)
+    if len(flat) > COVER_MAX:
+        problems.append(f"{len(flat)}자(18자 이내)")
+    if len(lines) > 2 or any(len(ln) > COVER_LINE_MAX for ln in lines):
+        problems.append("2줄·줄당 9자 안팎이 아님")
+    compact = _compact(flat)
+    names = list(terms) + [_compact(o) for o in orgs]
+    if names and not any(n in compact for n in names):
+        problems.append("핵심 명사 없음")
+    if not re.search(r"\d", flat):
+        problems.append("숫자 없음")
+    if (word := next((w for w in ABSTRACT_WORDS if w in flat), None)):
+        problems.append(f"추상어 {word!r}")
+    rest = flat
+    for m in _WON_RE.finditer(flat):  # 금액은 원문 값이거나 검증된 계산 결과만
+        v = won_value(m.group(0))
+        if not (any(_same(v, a) for a in article_values(article)) or any(abs(v - x) <= max(1.0, x * 0.01) for x in verified)):
+            problems.append(f"원문·계산에 없는 금액 {m.group(0)!r}")
+        rest = rest.replace(m.group(0), "")
+    allowed = _numbers(article) | ({str(listing["days_left"])} if listing else set())
+    made_up = [n for n in _numbers(rest) if len(n.replace(".", "")) >= 2 and n not in allowed]
+    if made_up:
+        problems.append(f"원문에 없는 숫자 {made_up}")
+    return problems
+
+
+def pick_cover(passing: list[str], title: str, core: str) -> dict:
+    """통과한 표지 후보 중 하나를 고른다(편집 단계, 작은 호출). 기준: 탐색 탭에서 멈추게 하는가 + 제목만 봐도 무슨 일인지 아는가."""
+    if len(passing) == 1:
+        return {"title": passing[0], "reason": "통과한 후보가 하나뿐"}
+    prompt = ("너는 인스타 카드뉴스 편집장이다. 아래 표지 제목 후보 중 하나를 고른다. 기준: 1) 인스타 탐색 탭에서 스크롤을 멈추게 하는가 "
+              "2) 제목만 봐도 무슨 일이고 독자 돈·상황에 뭐가 바뀌는지 아는가. JSON만: {\"pick\": 번호, \"reason\": \"한 문장\"}\n\n"
+              f"기사: {title}\n핵심: {core}\n후보: " + json.dumps({i + 1: c for i, c in enumerate(passing)}, ensure_ascii=False))
+    try:
+        raw = call_text_model("반드시 유효한 JSON 한 객체만 반환한다.", prompt, max_tokens=300)
+        got = _parse(raw)
+        n = int(got.get("pick"))
+        if 1 <= n <= len(passing):
+            return {"title": passing[n - 1], "reason": str(got.get("reason") or "")[:120]}
+    except Exception as e:
+        _raise_if_quota_exhausted(e)
+        print(f"[slide_writer v2] 표지 고르기 실패, 첫 통과 후보를 씀: {e}", file=sys.stderr)
+    return {"title": passing[0], "reason": "고르기 실패로 첫 통과 후보"}
+
+
+def check_v2(deck: dict, table: dict, listing: dict | None, title: str, verified: list[float] | None = None) -> None:
+    """v2 구조 검사: 장 역할·순서, 장마다 사실표 항목, 60자·3줄·머리글 12자, 강조 1~2개, layout, 숫자 장 연속,
+    사실 배치 기록, 빈말, 표지 금액은 계산 장에서 설명, 마지막 행동, 캡션 요약 줄. 문제를 모아 한 번에 올린다."""
+    problems: list[str] = []
     facts = {f["id"]: f for f in table["facts"]}
     slides = deck.get("slides") or []
-    terms = set()
-    for t in (table.get("title_terms") or []) + [title]:
-        terms |= _stems(str(t))
+    structure = _structure(listing)
+    roles = [s.get("role") for s in slides]
+    if structure:
+        order = structure["roles"]
+        unknown = [r for r in roles if r not in order]
+        if unknown:
+            problems.append(f"모르는 role {unknown}(쓸 수 있는 것: {order})")
+        else:
+            idx = [order.index(r) for r in roles]
+            if idx != sorted(idx) or len(set(idx)) != len(idx):
+                problems.append(f"장 순서가 구조와 다름: {roles}(순서: {order})")
+        missing = [r for r in structure["required"] if r not in roles]
+        if missing:
+            problems.append(f"필수 장 없음: {missing}")
+        if "전후 비교" in roles and slides[roles.index("전후 비교")].get("kind") != "compare":
+            problems.append("\"전후 비교\" 장은 kind \"compare\"여야 함")
+    tones = []
     for i, slide in enumerate(slides, 1):
         refs = slide.get("facts")
         if not isinstance(refs, list) or not refs or any(r not in facts for r in refs):
-            raise ValueError(f"{i}장 \"facts\"에 사실표 항목 id가 없거나 틀림({refs!r}). 장마다 담은 사실표 id를 적을 것")
+            problems.append(f"{i}장 \"facts\"에 사실표 id가 없거나 틀림({refs!r})")
+            refs = [r for r in refs or [] if r in facts] if isinstance(refs, list) else []
+        lay = slide.get("layout")
+        if not isinstance(lay, dict):
+            problems.append(f"{i}장 layout 칸 없음")
+        else:
+            bad = [k for k, ok in (("tone", LAYOUT_TONES), ("title_pos", LAYOUT_POS), ("margin", LAYOUT_MARGIN), ("icon", LAYOUT_ICONS))
+                   if lay.get(k) not in ok]
+            if bad:
+                problems.append(f"{i}장 layout {bad} 값이 목록 밖: {lay}")
+            tones.append(lay.get("tone"))
+        for key in ("title", "value", "kicker"):
+            if "**" in str(slide.get(key) or ""):
+                problems.append(f"{i}장 {key}에 ** 강조(본문·목록·label·note에만)")
         text = " ".join(_texts(slide))
         if (m := _VAGUE_RE.search(text)):
-            raise ValueError(f"{i}장 정보 없는 문장({m.group(0)!r}). 숫자·대상·조건·행동으로 바꿀 것: {text!r}")
-        fact_words = set().union(*(_stems(facts[r]["fact"]) for r in refs))
-        has_info = (re.search(r"\d", text) or _CONDITION_RE.search(text) or (i == len(slides) and _ACTION_RE.search(text))
-                    or len(_stems(text) & fact_words) >= 2)
-        if not has_info:
-            raise ValueError(f"{i}장에 사실표 내용(숫자·대상·조건·고유명사)이 안 보임({', '.join(refs)}): {text!r}")
-    cover = slides[0]
-    cover_title = _compact(str(cover.get("title") or ""))
-    if terms and not any(t in cover_title for t in terms):
-        raise ValueError(f"표지 제목에 기사 핵심 명사({', '.join(sorted(terms)[:5])} 중 하나)가 없음: {cover.get('title')!r}")
-    if listing:
-        cover_all = _compact(" ".join(_texts(cover)))
-        orgs = [o for o in (table.get("org") or []) + host_names(listing.get("host")) if o]
-        if orgs and not any(_compact(o) in cover_title for o in orgs):
-            raise ValueError(f"공고 표지 제목에 기관 이름({orgs[0]})이 없음: {cover.get('title')!r}")
-        d_mark = f"D-{listing['days_left']}"
-        if d_mark not in cover_all and not _DATE_RE.search(" ".join(_texts(cover))):
-            raise ValueError(f"공고 표지(title·subtitle·kicker)에 마감({d_mark} 또는 날짜)이 없음")
-    last = " ".join(_texts(slides[-1]))
+            problems.append(f"{i}장 정보 없는 문장({m.group(0)!r})")
+        if i == 1:
+            continue
+        heading = str(slide.get("title") or "").replace("\n", "")
+        if len(heading) > HEADING_MAX:
+            problems.append(f"{i}장 머리글 {len(heading)}자(12자 이내): {heading!r}")
+        lines = _card_lines(slide)
+        body = "".join(_plain(ln) for ln in lines)
+        if len(body) > CARD_TEXT_MAX:
+            problems.append(f"{i}장 본문 {len(body)}자(60자 이내, 넘치는 사실은 캡션·가이드로): {body!r}")
+        if len(lines) > CARD_LINES_MAX:
+            problems.append(f"{i}장 본문 {len(lines)}줄(3줄 이내)")
+        long = [ln for ln in lines if len(_plain(ln)) > CARD_LINE_MAX]
+        if long:
+            problems.append(f"{i}장 한 줄이 20자를 크게 넘음: {_plain(long[0])!r}")
+        marks = sum(len(_EMPH_RE.findall(ln)) for ln in lines)
+        if not 1 <= marks <= 2:
+            problems.append(f"{i}장 **강조** {marks}개(장마다 핵심 단어 1~2개)")
+        if any(ln.count("**") % 2 for ln in lines):
+            problems.append(f"{i}장 ** 짝이 안 맞음")
+        fact_words = set().union(*(_stems(facts[r]["fact"]) for r in refs)) if refs else set()
+        if not (re.search(r"\d", text) or _CONDITION_RE.search(text) or _ACTION_RE.search(text) or len(_stems(text) & fact_words) >= 2):
+            problems.append(f"{i}장에 사실표 내용(숫자·대상·조건·고유명사)이 안 보임")
+        if listing and "DM" in text:
+            problems.append(f"{i}장 \"댓글 '가이드'면 DM\" 안내는 캡션에만")
+    for i in range(2, len(tones)):
+        if tones[i] and tones[i] == tones[i - 1] == tones[i - 2]:
+            problems.append(f"{i - 1}~{i + 1}장 tone이 3장 연속 {tones[i]!r}")
+    kinds = [s.get("kind") for s in slides]
+    for i in range(1, len(kinds)):
+        if kinds[i] in ("stat", "compare") and kinds[i - 1] in ("stat", "compare"):
+            problems.append(f"{i}~{i + 1}장 숫자 장({kinds[i - 1]}·{kinds[i]})이 연달아 있음(합칠 것)")
+    placement = deck.get("fact_placement")
+    if not isinstance(placement, dict):
+        problems.append("fact_placement 칸 없음(사실표 모든 항목이 카드·캡션·가이드 중 어디 갔는지)")
+    else:
+        missing = [f for f in facts if f not in placement]
+        if missing:
+            problems.append(f"fact_placement에 빠진 사실 {missing}")
+        for fid, where in placement.items():
+            m = re.fullmatch(r"(\d+)장", str(where).strip())
+            if m and not (1 <= int(m.group(1)) <= len(slides) and fid in (slides[int(m.group(1)) - 1].get("facts") or [])):
+                problems.append(f"fact_placement {fid}: {where}인데 그 장 facts에 없음")
+            elif not m and str(where).strip() not in ("캡션", "가이드"):
+                problems.append(f"fact_placement {fid}: {where!r}(\"N장\"·\"캡션\"·\"가이드\" 중 하나)")
+    cover_title = str(slides[0].get("title") or "") if slides else ""
+    if REQUIRE_CALC and structure and "내 돈 계산" in roles:  # 표지에서 말한 금액은 계산 장에서 설명돼야
+        calc_text = " ".join(_texts(slides[roles.index("내 돈 계산")]))
+        for m in _WON_RE.finditer(cover_title):
+            v = won_value(m.group(0))
+            if not any(abs(won_value(x.group(0)) - v) <= max(1.0, v * 0.01) for x in _WON_RE.finditer(calc_text)):
+                problems.append(f"표지 금액 {m.group(0)!r}이 \"내 돈 계산\" 장에 없음")
+    last = " ".join(_texts(slides[-1])) if slides else ""
     action = table.get("action") or {}
     where = _stems(str(action.get("where") or "")) if isinstance(action, dict) else set()
     if len(slides) > 1:
         if where and not (any(w in _compact(last) for w in where) and _ACTION_RE.search(last)):
-            raise ValueError(f"마지막 장이 구체적 행동이 아님(어디서 무엇을: {action.get('where')} / {action.get('what')}): {last!r}")
-        if not where and not re.search(r"\d", last):
-            raise ValueError(f"마지막 장에 행동도 숫자도 없음(사실표에서 기억할 숫자 하나로 끝낼 것): {last!r}")
+            problems.append(f"마지막 장에 행동 한 줄이 없음(어디서 무엇을: {action.get('where')} / {action.get('what')})")
+        if not where and not (re.search(r"\d", last) or _ACTION_RE.search(last)):
+            problems.append("마지막 장에 행동도 숫자도 없음")
     if CAPTION_RULES:
         plain_title = normalize_title(title)
         for line in str(deck.get("caption") or "").splitlines():
             line = line.strip()
-            if not line.startswith("•"):
-                continue
-            if not (re.search(r"\d", line) or _CONDITION_RE.search(line)):
-                raise ValueError(f"캡션 요약 줄에 숫자·조건이 없음(사실표 항목 1개를 숫자·조건과 함께): {line!r}")
-            if fuzz.ratio(normalize_title(line), plain_title) >= 60:
-                raise ValueError(f"캡션 요약 줄이 기사 제목을 바꿔 말한 것: {line!r}")
+            if line.startswith("•"):
+                if not (re.search(r"\d", line) or _CONDITION_RE.search(line)):
+                    problems.append(f"캡션 요약 줄에 숫자·조건이 없음: {line!r}")
+                if fuzz.ratio(normalize_title(line), plain_title) >= 60:
+                    problems.append(f"캡션 요약 줄이 기사 제목을 바꿔 말한 것: {line!r}")
+    if problems:
+        raise ValueError("\n".join(dict.fromkeys(problems)))
 
 
 _FACT_ID_RE = re.compile(r"\s*[(\[]\s*F\d+(?:\s*[,·]\s*F\d+)*\s*[)\]]")
@@ -1183,43 +1359,138 @@ def _strip_fact_ids(deck: dict) -> dict:
 
 def v2_system_prompt(listing: dict | None) -> str:
     rules = [r for r in config.CHANNEL_CONFIG["writer_rules"] if "topic_type" not in r and "wallet_impact" not in r]
-    lim = {"body": _TEXT_LIMITS["body"], "note": _TEXT_LIMITS["note"], "label": _TEXT_LIMITS["label"],
-           "item": V2_ITEM_MAX, "sentence": V2_SENTENCE_MAX}
+    structure = _structure(listing) or {"roles": [], "required": ["표지"], "text": "자유 구성(표지 먼저)", "noun_rule": "기사 주제어",
+                                         "cover_example": '"전세 이자\\n월 5만원 더 내요"'}
     tone = config.CHANNEL_CONFIG["tone_rule"] if BANMAL else (
-        '말투는 친근한 해요체. 모든 문장 끝을 "~예요/~이에요/~해요/~어요/~죠"로 쓴다. "~습니다/~합니다/~입니다"는 한 문장도 쓰지 않는다. '
-        '문장은 짧게, 정보는 빼지 않는다.')
+        '말투는 친근한 해요체("~예요/~해요"). 줄은 짧은 명사구로 끝나도 된다. "~습니다/~합니다"·기사체("~했다")는 쓰지 않는다.')
     return WRITER_V2_PROMPT.format(
-        intro=config.CHANNEL_CONFIG["writer_intro"],
-        title_rule=V2_TITLE_RULE_LISTING if listing else "",
-        tone=tone,
-        channel_rules="".join(f"{i}. {r}\n" for i, r in enumerate(rules, 10)),
+        intro=config.CHANNEL_CONFIG["writer_intro"], tone=tone,
+        channel_rules="".join(f"{i}. {r}\n" for i, r in enumerate(rules, 7)),
         calc_rule=V2_CALC_RULE if REQUIRE_CALC else "",
-        hook_rule=', hook(채널 규칙에 있을 때만, 각 22자 이내)' if any("hook" in r for r in rules) else "",
-        slides_min=SLIDES_MIN, slides_max=SLIDES_MAX, caption_spec=CAPTION_SPEC,
-        caption_rule=V2_CAPTION_RULE_ECON if CAPTION_RULES else "",
-        verdict_fields="", calc_field=' "calculations": [],' if REQUIRE_CALC else "",
+        required=", ".join(f'"{r}"' for r in structure["required"]), structure=structure["text"],
+        noun_rule=structure["noun_rule"], abstract=", ".join(f'"{w}"' for w in ABSTRACT_WORDS[:12]),
+        cover_example=structure["cover_example"], icons=", ".join(LAYOUT_ICONS),
+        compare_rule='"전후 비교" 장은 kind "compare"(비교 레이아웃).' if REQUIRE_CALC else "",
+        hook_rule=". cover에 hook(채널 규칙에 있을 때만, 각 22자 이내)" if any("hook" in r for r in rules) else "",
+        caption_spec=CAPTION_SPEC, caption_rule=V2_CAPTION_RULE_ECON if CAPTION_RULES else "",
+        calc_field=' "calculations": [],' if REQUIRE_CALC else "",
         hashtag_example=config.CHANNEL_CONFIG["hashtag_example"],
-        extra_out=', "ended": false' if CHECK_DEADLINE else "", **lim,
+        extra_out=', "ended": false' if CHECK_DEADLINE else "",
     )
 
 
 def tone_errors(deck: dict) -> list[str]:
-    """해요체(반말 채널은 기사체·합쇼체 금지)에 어긋난 문장을 한 번에 모두 찾는다. 하나씩 고치다 호출이 늘어서(11/2)."""
+    """기사체·합쇼체 줄을 한 번에 모두 찾는다(v2는 짧은 명사구 줄을 허용해 해요체 끝맺음은 강제하지 않는다)."""
     found = []
     for i, slide in enumerate(deck.get("slides") or [], 1):
-        for sentence in _SENTENCE_SPLIT_RE.split(str(slide.get("body") or "").strip()):
-            if not sentence:
-                continue
-            bad = _ARTICLE_END_RE.search(sentence) if BANMAL else not _POLITE_END_RE.search(sentence)
-            if bad:
-                found.append(f"{i}장 말투: {sentence!r}")
+        for line in _card_lines(slide) + [str(slide.get("title") or "")]:
+            for sentence in _SENTENCE_SPLIT_RE.split(_plain(line).strip()):
+                if sentence and _ARTICLE_END_RE.search(sentence):
+                    found.append(f"{i}장 말투(합쇼체·기사체): {sentence!r}")
     return found
+
+
+def _v2_checks(deck: dict, table: dict, article: str, title: str, published, listing, outlet) -> list[float]:
+    """코드 검사 전부. 문제를 모아 ValueError 하나로. 통과하면 검증된 계산 금액을 돌려준다."""
+    problems = tone_errors(deck)
+    verified: list[float] = []
+    try:
+        verified = check_calculations(deck, article)
+    except NoCalculation:
+        raise
+    except ValueError as e:
+        problems.append(str(e))
+    for check in (lambda: check_deck(deck, article, published, listing, title=title, outlet=outlet, v2=True),
+                  lambda: check_v2(deck, table, listing, title, verified)):
+        try:
+            check()
+        except (SkipArticle, NoCalculation):
+            raise
+        except ValueError as e:
+            problems.append(str(e))
+    if problems:
+        raise ValueError("\n".join(dict.fromkeys(problems)))
+    return verified
+
+
+def _choose_cover(deck: dict, table: dict, article: str, title: str, listing: dict | None) -> None:
+    """후보 10개를 검사해 deck["cover_candidates"]에 남기고, 통과한 것 중 첫 번째를 일단 표지에 넣는다(최종 선택은 pick_cover)."""
+    cands = [str(c).replace("\\n", "\n").strip() for c in deck.get("title_candidates") or [] if isinstance(c, str) and c.strip()]
+    if len(cands) < 10:
+        raise ValueError(f"title_candidates가 {len(cands)}개(10개)")
+    terms = set()
+    for t in (table.get("title_terms") or []) + [title]:
+        terms |= _stems(str(t))
+    try:
+        verified = check_calculations(deck, article)
+    except ValueError:
+        verified = []
+    orgs = [o for o in (table.get("org") or []) + (host_names(listing.get("host")) if listing else []) if o]
+    rows = [{"title": c, "problems": cover_problems(c, terms, orgs, article, verified, listing)} for c in cands]
+    deck["cover_candidates"] = rows
+    passing = [r["title"] for r in rows if not r["problems"]]
+    if not passing:
+        raise ValueError("표지 후보 10개가 모두 조건 탈락: " + " / ".join(f"{r['title']!r} {r['problems']}" for r in rows[:5]))
+    deck["slides"][0]["title"] = passing[0]
+
+
+DESIGNER_PROMPT = """너는 카드뉴스 외주 10년차 디자이너야. 이 덱(장별 문구 + layout + 렌더 QA 결과: 넘침·겹침·줄 수)을 보고
+납품 전에 반드시 고칠 곳 3개와 고친 문장을 써라. 사실·숫자는 바꾸지 말고(원문 숫자·계산 결과 그대로), 장 구조와 글자 규칙
+(표지 외 장 본문 60자·3줄, 머리글 12자, 장마다 **강조** 1~2개)을 지킨다. 고칠 칸은 title·body·label·note·kicker·subtitle 중 하나,
+목록은 "items.0"처럼 번호까지.
+JSON만: {"fixes": [{"slide": 장 번호, "field": "body", "before": "지금 문구", "after": "고친 문구", "reason": "왜(한 문장)"}, ...3개]}"""
+
+
+def designer_review(deck: dict, render_qa: str, article: str, title: str, published, listing, outlet,
+                    model: str | None = None) -> tuple[dict, list[dict], float]:
+    """렌더 뒤 검수 1회. 고친 문장을 하나씩 반영해 검사를 통과한 것만 남긴다. (새 덱, 검수 3개, 뉴런)."""
+    import copy
+    import llm_client
+
+    title, article = strip_outlet(title), clean_article(article)
+    before = llm_client.NEURONS_USED
+    view = [{"slide": i, "role": s.get("role"), "kind": s.get("kind"), "layout": s.get("layout"),
+             **{k: s.get(k) for k in ("title", "kicker", "subtitle", "body", "label", "note", "value", "items") if s.get(k)},
+             "lines": len(_card_lines(s)), "chars": len("".join(_plain(x) for x in _card_lines(s)))}
+            for i, s in enumerate(deck.get("slides") or [], 1)]
+    request = f"기사: {title}\n\n[덱]\n{json.dumps(view, ensure_ascii=False)}\n\n[렌더 QA]\n{render_qa or '경고 없음'}"
+    try:
+        fixes = _parse(call_text_model(DESIGNER_PROMPT, request, max_tokens=3000, model=model or MODEL)).get("fixes") or []
+    except Exception as e:
+        _raise_if_quota_exhausted(e)
+        return deck, [{"error": f"검수 실패: {e}"}], llm_client.NEURONS_USED - before
+    table = deck.get("fact_table") or {"facts": []}
+    current = deck
+    results = []
+    for fix in fixes[:3]:
+        row = {k: fix.get(k) for k in ("slide", "field", "before", "after", "reason")}
+        try:
+            trial = copy.deepcopy(current)
+            slide = trial["slides"][int(fix["slide"]) - 1]
+            field = str(fix["field"])
+            if field.startswith("items."):
+                slide["items"][int(field.split(".")[1])] = fix["after"]
+            elif field in ("title", "body", "label", "note", "kicker", "subtitle"):
+                slide[field] = fix["after"]
+            else:
+                raise ValueError(f"고칠 수 없는 칸 {field!r}")
+            caption_body = trial["caption"]  # 덱 캡션은 고지·해시태그가 붙은 최종본이라 캡션 규칙 검사는 건너뛴다
+            trial["caption"] = deck.get("caption_body") or caption_body
+            _v2_checks(trial, table, article + " " + title, title, published, listing, outlet)
+            trial["caption"] = caption_body
+            current, row["applied"] = trial, True
+        except Exception as e:
+            row.update(applied=False, rejected=str(e)[:200])
+        results.append(row)
+    neurons = llm_client.NEURONS_USED - before
+    print(f"[slide_writer v2] 디자이너 검수 {neurons:.0f} 뉴런, 반영 {sum(1 for r in results if r.get('applied'))}/{len(results)}", file=sys.stderr)
+    return current, results, neurons
 
 
 def write_deck_v2(title: str, article: str, category: str, hint: str = "", published: date | None = None,
                   listing: dict | None = None, outlet: str | None = None, model: str | None = None) -> dict:
-    """1단계 사실표 → 2단계 카드 → 코드 검사. 걸리면 걸린 이유를 붙여 고쳐 쓰게 한다(최대 2번).
-    금액 계산 채널에서 계산 카드가 두 번 없으면 SkipArticle(다음 순위 기사로)."""
+    """1단계 사실표 → 2단계 카드(표지 후보 10개 포함) → 코드 검사(문제를 모아서) → 표지 고르기.
+    걸리면 걸린 이유를 붙여 고쳐 쓰게 한다(최대 2번). 금액 계산 채널에서 계산 장이 두 번 없으면 SkipArticle."""
     model = model or MODEL
     title = strip_outlet(title)
     article = clean_article(article)
@@ -1237,7 +1508,7 @@ def write_deck_v2(title: str, article: str, category: str, hint: str = "", publi
     source = normalize_hanja(f"카테고리: {config.CATEGORY_LABELS.get(category, category)}\n기사 제목: {title}\n\n"
                              f"[사실표]\n{json.dumps(shown, ensure_ascii=False, indent=0)}")
     if listing:
-        source += (f"\n\n[공고 카드 규칙] 원문은 지금 신청할 수 있는 공식 모집 공고다. 덱의 \"ended\"는 false. "
+        source += (f"\n\n[공고 카드 규칙] 원문은 지금 신청할 수 있는 공식 모집 공고다. 덱의 \"ended\"는 false. 오늘 기준 D-{listing['days_left']}. "
                    f"캡션 {CAPTION_DATE_MARK} 줄에 신청 기간과 \"D-{listing['days_left']}\"를 그대로 쓴다. "
                    f"캡션 ✅ 신청 방법 줄에 공식 기관명 \"{display_host(listing.get('host'))}\"을 쓴다.")
     if hint:
@@ -1249,25 +1520,17 @@ def write_deck_v2(title: str, article: str, category: str, hint: str = "", publi
         if deck is not None:
             request += f"\n\n[지난 덱]\n{json.dumps(deck, ensure_ascii=False)}\n\n[검사에서 걸린 문제 — 반드시 고칠 것]\n{feedback}"
         try:
-            deck = _strip_fact_ids(_parse(call_text_model(system, request, max_tokens=8000, model=model)))
+            deck = _strip_fact_ids(_parse(call_text_model(system, request, max_tokens=10000, model=model)))
             if CHECK_DEADLINE and not listing and deck.get("ended") is True and not has_upcoming_date(article, published):
                 raise SkipArticle("이미 끝난 행사·모집이라 게시하지 않음(작성 단계 판단)")
-            # 걸린 문제를 한 번에 모아 돌려준다(첫 문제만 알려 주면 고칠 때마다 새 문제가 나와 호출이 늘었다)
-            problems = tone_errors(deck)
-            for check in (lambda: check_deck(deck, check_text, published, listing, title=title, outlet=outlet, v2=True),
-                          lambda: check_v2(deck, table, listing, title)):
-                try:
-                    check()
-                except (SkipArticle, NoCalculation):
-                    raise
-                except ValueError as e:
-                    problems.append(str(e))
-            if problems:
-                raise ValueError("\n".join(dict.fromkeys(problems)))
+            if not deck.get("slides"):
+                raise ValueError("slides가 비어 있음")
+            _choose_cover(deck, table, article, title, listing)
+            _v2_checks(deck, table, check_text, title, published, listing, outlet)
             tags = " ".join("#" + t for t in clean_hashtags(deck.get("hashtags")))
             disclaimer = listing_disclaimer(listing.get("host")) if listing else DISCLAIMER
-            final_caption = f"{str(deck.get('caption') or '').strip()}\n\n{chr(10).join(p for p in (disclaimer, tags) if p)}".strip()
-            final_caption = comment_dm.add_line(final_caption)
+            body = str(deck.get("caption") or "").strip()
+            final_caption = comment_dm.add_line(f"{body}\n\n{chr(10).join(p for p in (disclaimer, tags) if p)}".strip())
             if len(final_caption) > CAPTION_HARD_MAX:
                 raise ValueError(f"캡션이 고지·해시태그 포함 {len(final_caption)}자(인스타 한도 {CAPTION_HARD_MAX}자) — 본문을 줄일 것")
         except SkipArticle:
@@ -1283,11 +1546,19 @@ def write_deck_v2(title: str, article: str, category: str, hint: str = "", publi
             _raise_if_quota_exhausted(e)
             last_error, feedback = e, str(e)
             print(f"[slide_writer v2] {attempt}번째 덱 검사 실패: {e}", file=sys.stderr)
-            if deck is None or not isinstance(deck, dict):
+            if not isinstance(deck, dict):
                 deck = None
             continue
+        passing = [r["title"] for r in deck["cover_candidates"] if not r["problems"]]
+        pick = pick_cover(passing, title, str(table.get("core") or ""))
+        deck["slides"][0]["title"] = pick["title"]
+        deck["cover_pick"] = pick
+        deck["caption_body"] = body
         deck["caption"] = final_caption
         deck["fact_table"] = table  # 검토용(어느 사실이 어느 장에 갔는지)
+        facts = {f["id"]: f for f in table["facts"]}
+        deck["guide_notes"] = [facts[f]["fact"] for f, where in (deck.get("fact_placement") or {}).items()
+                               if str(where).strip() == "가이드" and f in facts]
         deck["image_prompt"] = deck.get("image_prompt") if isinstance(deck.get("image_prompt"), str) and not str(
             deck.get("image_prompt")).startswith(_IMAGE_PROMPT_EXAMPLE) else None
         deck["props"] = clean_props(deck.get("props"), article + " " + title, listing.get("host") if listing else None)

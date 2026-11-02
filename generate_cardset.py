@@ -51,6 +51,9 @@ BG_BLUR_RADIUS = 24
 FALLBACK = auto_select.RANK_SIZE > 1 and not auto_select.LISTINGS
 MAX_DAILY_ATTEMPTS = int(config.CHANNEL_CONFIG.get("max_daily_attempts") or 0)
 QUOTA_EXHAUSTED = False  # Cloudflare 일일 무료 한도 소진이면 다음 순위도 소용없으니 멈춘다(일시 제한 429는 아님)
+# 디자이너 검수 비용 안전장치(2026-11-02): 그날 계정 사용량이 이 값을 넘으면 검수를 건너뛴다(무료 한도 1만, 09:00 KST 초기화).
+DESIGNER_NEURON_CAP = int(config.CHANNEL_CONFIG.get("designer_neuron_cap") or 7000)
+RUN_RECORDED = 0.0  # 이번 실행에서 usage 이벤트로 이미 남긴 뉴런(남기지 않은 사용량 = llm_client.NEURONS_USED - 이것)
 
 
 def pick_template(category: str, day: date | None = None, slot: int = 0) -> str:
@@ -286,6 +289,8 @@ def process_item(item: dict, slot: int = 0, history: list[dict] | None = None, f
             _record_retry(item, attempt, f"렌더 QA 실패: {e}")
             hint = str(e)
             continue
+        if slide_writer.WRITER_V2 and deck.get("fact_table"):
+            deck = designer_pass(item, deck, output, article_text, published, listing, template, background, out_dir)
         (out_dir / "caption.txt").write_text(deck["caption"], encoding="utf-8")
         if config.CHANNEL_CONFIG.get("reels"):
             try:
@@ -305,6 +310,71 @@ def process_item(item: dict, slot: int = 0, history: list[dict] | None = None, f
 
     fail(f"렌더 {MAX_RENDER_ATTEMPTS}회 실패로 게시하지 않음", status=give_up)
     return None
+
+
+def account_neurons_today() -> float:
+    """이 채널 계정의 오늘 텍스트 모델 사용량 추정: 오늘(UTC 0시 = 09:00 KST 초기화 기준) usage 이벤트 합 + 이번 실행에서
+    아직 기록하지 않은 사용량(선정 등). Cloudflare 사용량 API는 토큰 권한이 없어(11/2 확인) 우리 기록으로 센다. 배경 이미지 뉴런은 빠진다."""
+    start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = (get_client().table("pipeline_events").select("detail").eq("channel", config.CHANNEL).eq("stage", "usage")
+            .gte("created_at", start.isoformat()).execute().data or [])
+    recorded = sum(float((r.get("detail") or {}).get("neurons") or 0) for r in rows)
+    return recorded + max(0.0, llm_client.NEURONS_USED - RUN_RECORDED)
+
+
+def record_usage(item: dict, neurons: float, message: str, **detail) -> None:
+    global RUN_RECORDED
+    RUN_RECORDED += neurons
+    events.record("usage", "success", category=item["category"], news_item_id=item["id"], message=message,
+                  detail={"neurons": round(neurons, 1), "run_total": round(llm_client.NEURONS_USED, 1), **detail})
+
+
+def designer_pass(item: dict, deck: dict, render_output: str, article_text: str, published, listing, template: str,
+                  background: Path, out_dir: Path) -> dict:
+    """렌더 뒤 10년차 디자이너 검수 1회(v2, 2026-11-02). 검사를 통과한 고친 문장만 반영해 다시 렌더하고,
+    다시 렌더가 실패하면 원래 덱으로 되돌린다. 검수 3개와 뉴런은 deck.json(designer_review·designer_neurons)에 남는다."""
+    try:
+        used = account_neurons_today()
+    except Exception as e:
+        used, note = None, f"사용량 조회 실패({e})"
+    if used is not None and used > DESIGNER_NEURON_CAP:
+        note = f"오늘 사용량 약 {used:.0f}뉴런 > {DESIGNER_NEURON_CAP}이라 디자이너 검수 건너뜀"
+    if used is None or used > DESIGNER_NEURON_CAP:  # 조회가 안 되면 안전한 쪽(건너뜀)
+        log.warning("[%s] %s", item["category"], note)
+        events.record("cardset", "skipped", category=item["category"], news_item_id=item["id"], message=note)
+        deck["designer_review"] = [{"error": note}]
+        (out_dir / "deck.json").write_text(json.dumps(deck, ensure_ascii=False, indent=1), encoding="utf-8")
+        return deck
+    qa = "\n".join(line for line in render_output.splitlines() if line.startswith(("warning:", "overflow")))
+    outlet = None if listing else item.get("source")
+    try:
+        reviewed, review, neurons = slide_writer.designer_review(deck, qa, article_text, item["title"], published, listing, outlet)
+    except Exception as e:  # 검수가 안 돼도 카드는 그대로 쓴다(일일 한도 소진은 다음 단계에서 다시 걸린다)
+        log.warning("[%s] 디자이너 검수 실패(검수 없이 진행): %s", item["category"], e)
+        deck["designer_review"] = [{"error": str(e)[:200]}]
+        (out_dir / "deck.json").write_text(json.dumps(deck, ensure_ascii=False, indent=1), encoding="utf-8")
+        return deck
+    log.info("[%s] 디자이너 검수 %.0f 뉴런(오늘 계정 약 %.0f), 반영 %d/%d", item["category"], neurons, used + neurons,
+             sum(1 for r in review if r.get("applied")), len(review))
+    record_usage(item, neurons, f"디자이너 검수 {neurons:.0f} 뉴런", stage="designer_review")
+    final = deck
+    if reviewed is not deck:
+        reviewed.update(designer_review=review, designer_neurons=round(neurons, 1))
+        ok, output = render(template, reviewed, background, out_dir)
+        try:
+            if not ok:
+                raise ValueError(output[-200:])
+            check_rendered_images(out_dir, len(reviewed["slides"]))
+            final = reviewed
+        except ValueError as e:
+            log.warning("[%s] 검수 반영 뒤 렌더 실패로 원래 덱으로 되돌림: %s", item["category"], e)
+            for row in review:
+                if row.get("applied"):
+                    row.update(applied=False, rejected="반영 뒤 렌더 실패로 되돌림")
+            render(template, deck, background, out_dir)
+    final["designer_review"], final["designer_neurons"] = review, round(neurons, 1)
+    (out_dir / "deck.json").write_text(json.dumps(final, ensure_ascii=False, indent=1), encoding="utf-8")
+    return final
 
 
 def save_card(item: dict, result: dict, publish_order: int, regenerated_from: int | None = None, note: str = "") -> dict:
@@ -356,7 +426,8 @@ def attempts_today() -> int:
     start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
     rows = (get_client().table("pipeline_events").select("detail")
             .eq("channel", config.CHANNEL).eq("stage", "usage").gte("created_at", start.isoformat()).execute().data or [])
-    return sum(1 for r in rows if ((r.get("detail") or {}).get("neurons") or 0) > 0)
+    return sum(1 for r in rows if ((r.get("detail") or {}).get("neurons") or 0) > 0
+               and (r.get("detail") or {}).get("stage") not in ("designer_review", "regenerate"))  # 검수·다시 만들기는 순위 시도가 아니다
 
 
 def main():
@@ -382,9 +453,9 @@ def main():
         result = process_item(item, slot, history)
         neurons = llm_client.NEURONS_USED - neurons_before
         log.info("[%s] 이번 시도 텍스트 모델 %.0f 뉴런(실행 누적 %.0f)", item["category"], neurons, llm_client.NEURONS_USED)
-        events.record("usage", "success", category=item["category"], news_item_id=item["id"],
-                      message=f"카드 시도 텍스트 모델 {neurons:.0f} 뉴런", detail={"neurons": round(neurons, 1),
-                                                                         "run_total": round(llm_client.NEURONS_USED, 1)})
+        designer = float((json.loads((Path(result["out_dir"]) / "deck.json").read_text(encoding="utf-8")).get("designer_neurons")
+                          if result and (Path(result["out_dir"]) / "deck.json").exists() else 0) or 0)
+        record_usage(item, neurons - designer, f"카드 시도 텍스트 모델 {neurons - designer:.0f} 뉴런")  # 검수분은 따로 기록됨
         slot += 1
         if not result:
             if FALLBACK and not QUOTA_EXHAUSTED and (nxt := auto_select.next_ranked(tried)):
@@ -415,7 +486,12 @@ def regenerate(card: dict) -> dict | None:
     item = rows[0]
     n = len(done) + 1
     log.info("[%s] card %s 다시 만들기 %d/%d: %s", item["category"], card["id"], n, limit, item["title"])
+    neurons_before = llm_client.NEURONS_USED
     result = process_item(item, slot=made_today() + n, folder_suffix=f"-r{n}")
+    neurons = llm_client.NEURONS_USED - neurons_before  # 다시 만들기도 그날 사용량에 넣는다(검수분은 따로 기록됨)
+    designer = float((json.loads((Path(result["out_dir"]) / "deck.json").read_text(encoding="utf-8")).get("designer_neurons")
+                      if result and (Path(result["out_dir"]) / "deck.json").exists() else 0) or 0)
+    record_usage(item, neurons - designer, f"다시 만들기 텍스트 모델 {neurons - designer:.0f} 뉴런", stage="regenerate")
     if not result:
         client.table("cards").update({"approval": "pending"}).eq("id", card["id"]).execute()
         _notify(f"card {card['id']} 다시 만들기 실패, 기존 카드로 되돌림(이유는 대시보드 오늘 탭 기록)", card["id"])

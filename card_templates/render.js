@@ -33,6 +33,7 @@ const toUrl = (p, base) => (!p || /^(https?|file|data):/.test(p) ? p : pathToFil
     const page = await browser.newPage({ viewport: { width: 1080, height: 1350 }, deviceScaleFactor: 1 });
     await page.goto(pathToFileURL(templatePath).href, { waitUntil: 'networkidle' });
     const n = await page.evaluate((j) => window.renderDeck(j), job);
+    for (const w of await page.evaluate(() => window.LAYOUT_LOG || [])) console.log('warning: ' + w);  // 반영 못 한 배치 값
     await page.evaluate(() => document.fonts.ready);
     await page.evaluate(() => window.fitDeck && window.fitDeck());
     await page.waitForFunction(() => [...document.images].every((img) => img.complete), null, { timeout: 15000 });

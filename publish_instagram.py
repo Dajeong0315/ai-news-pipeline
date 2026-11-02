@@ -338,8 +338,10 @@ def main(argv: list[str] | None = None):
             story_queue.add(media_id, item["final_title"], item["id"])
         # 댓글 → 자료 DM용 자료 목록(Aside가 노션 페이지를 만들고 notion_url을 채움)
         if comment_dm.enabled():
+            deck_path = out_dir / "deck.json"
+            notes = json.loads(deck_path.read_text(encoding="utf-8")).get("guide_notes") if deck_path.exists() else None
             comment_dm.add_guide(comment_dm.guide_entry(media_id, instagram_client.permalink(media_id),
-                                                        item["final_title"], caption, plan["news"]))
+                                                        item["final_title"], caption, plan["news"], notes))
         reel_id = publish_reel(item, out_dir / "reel.mp4", caption, collaborators)
         if collaborators:
             accept_collab_invites(collaborators, [m for m in (media_id, reel_id) if m])
