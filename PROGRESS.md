@@ -24,6 +24,20 @@
 - **정리**: 대시보드 채널 설정은 `sync_dashboard_channels.py`가 channel.json에서 만든 `webhook/api/channels.json`을 읽음(하루 1건이면 "1건"), 경제 stock 키 삭제(지난 기록용 retired_categories),
   logs의 텔레그램 토큰 460곳·인스타 access_token 59곳 가림(새 토큰은 루트 .env TELEGRAM_BOT_TOKEN + Vercel 환경변수, 그다음 set_telegram_webhook.py).
 - **사실표 작성 v2**(`slide_writer.write_deck_v2`, channel.json writer_v2 또는 SLIDE_WRITER_V2=1일 때만): 11/2 시험 4건 중 1건 통과. 비교는 11/3 09:00 한도 초기화 뒤.
+- **카드 구조 v2(같은 날 오후, 꺼 둔 채 구현 · 커밋 전 — 같은 파일을 고친 도로교통공단 재제작 세션 작업과 섞여 11/3 비교 뒤 함께 커밋)**
+  - 표지: 작성 호출 안에서 title_candidates 10개 → 코드 조건(18자·2줄·줄당 9자 안팎·핵심 명사·원문/검증 계산 숫자·추상어 목록) → 통과 후보 중 편집 단계(`pick_cover`, 작은 호출)가 1개.
+    후보·탈락 이유·선택 이유는 deck.json(cover_candidates·cover_pick), 텔레그램 미리보기에 후보 3개.
+  - 장 역할(role): 경제 표지/무슨 일/흔한 착각/내 돈 계산/이렇게 하면/전후 비교(compare 강제), 디징 표지/나 해당돼?/신청 순서/준비물·주의/한눈 요약. 순서·필수 장(경제 계산, 디징 2·3) 코드 검사.
+  - 표지 외 장 60자·3줄·한 줄 20자 안팎·머리글 12자, 장마다 **강조** 1~2개(없으면 실패), 넘치는 사실은 캡션·가이드(fact_placement, 가이드분은 deck.guide_notes → guides.json).
+    11/2 오전의 "본문 150자 완화"는 취소. 숫자 장(stat·compare) 연속 금지, 표지 금액은 계산 장에서 설명, 계산식에 쓴 환산 수(12개월 등)는 카드에 써도 됨.
+  - 장별 layout(tone·title_pos·margin·icon): `card_templates/_shared/engine.js`가 반영. tone은 사진 배경 템플릿만, title_pos는 gallery·darkcenter·blocktitle·magazine만,
+    아이콘(10종, 엔진 안 SVG)은 오른쪽 위 장식이 없는 템플릿만, 범위 밖 값은 무시하고 렌더 경고. 강조는 표시 문자로 바꿨다가 HTML 완성 뒤 `<mark class="hl">`(브랜드 accent 형광펜) → 14종 모두 지원.
+    렌더 테스트(60자·3줄·강조·layout) 경제 6종·디징 9종 전부 통과(`output/_quality_test/render_v2`). 기존 v1 덱은 다시 렌더해도 픽셀이 같음(확인).
+  - 렌더 뒤 10년차 디자이너 검수 1회(`generate_cardset.designer_pass`): 고칠 곳 3개 → 검사 통과분만 반영해 다시 렌더(실패 시 원래 덱), 결과·뉴런은 deck.json·usage 이벤트·미리보기.
+  - 경제 배경 image_prompt_suffix(한국 도시·실내, 한자·가나 간판 없음, 얼굴 클로즈업 피함).
+- **대시보드**: 인스타에서 지운 게시물 "삭제됨"(카드 탭). `mark_deleted_media.daily()`를 run_daily가 실행마다 불러 채널마다 하루 1번(IPv4 연결 재사용, 경제 39건 약 3분).
+  media_id가 cards에 없는 옛 게시물은 같은 분야·같은 날 카드가 하나면 그 카드로. **cards.publish_status 제약에 deleted가 없어 `sql/2026-11-02_publish_status_deleted.sql` 적용 필요**
+  (적용 전엔 카드 표시만 건너뜀, 11/2 경제 확인: 39건 중 34건 삭제). `?channel=youth`(또는 ?ch=)로 열면 디징 탭부터.
 
 ## 2026-11-02 경제 자동 게시 재개 · 디징 승인 후 게시 · 콜라보 게시 · 댓글 자료 DM 준비 (코드 완료, 마이그레이션 적용·디징 스케줄 켬)
 

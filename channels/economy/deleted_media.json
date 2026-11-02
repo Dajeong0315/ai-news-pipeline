@@ -4,7 +4,7 @@
   "posted_at": "2026-09-04 20:17:58",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18087607034224601' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18110496566121859": {
@@ -12,7 +12,7 @@
   "posted_at": "2026-09-04 20:20:11",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18110496566121859' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18157591591499963": {
@@ -20,7 +20,7 @@
   "posted_at": "2026-09-04 20:22:47",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18157591591499963' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18422057779144487": {
@@ -28,7 +28,7 @@
   "posted_at": "2026-09-06 18:06:56",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18422057779144487' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "17962531206188468": {
@@ -36,7 +36,7 @@
   "posted_at": "2026-09-06 18:09:07",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '17962531206188468' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "17987089860101835": {
@@ -44,7 +44,7 @@
   "posted_at": "2026-09-06 18:11:14",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '17987089860101835' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18110210174157831": {
@@ -52,7 +52,7 @@
   "posted_at": "2026-09-12 18:10:45",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18110210174157831' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18151556122523214": {
@@ -60,7 +60,7 @@
   "posted_at": "2026-09-12 18:13:49",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18151556122523214' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18136161790545567": {
@@ -68,7 +68,7 @@
   "posted_at": "2026-09-12 18:18:22",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18136161790545567' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18130659325708106": {
@@ -76,7 +76,7 @@
   "posted_at": "2026-09-12 18:21:26",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18130659325708106' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "17912828616467124": {
@@ -84,7 +84,7 @@
   "posted_at": "2026-09-13 18:09:04",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '17912828616467124' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18201008662379831": {
@@ -92,7 +92,7 @@
   "posted_at": "2026-09-18 18:09:53",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18201008662379831' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18128341264796726": {
@@ -100,7 +100,7 @@
   "posted_at": "2026-09-18 18:13:06",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18128341264796726' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18071206067741129": {
@@ -108,7 +108,7 @@
   "posted_at": "2026-09-18 18:16:12",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18071206067741129' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18079193585361305": {
@@ -116,7 +116,7 @@
   "posted_at": "2026-09-18 18:19:14",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18079193585361305' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18157886422500817": {
@@ -124,7 +124,7 @@
   "posted_at": "2026-09-19 18:10:48",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18157886422500817' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18442657747135155": {
@@ -132,7 +132,7 @@
   "posted_at": "2026-09-19 18:13:59",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18442657747135155' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "17991786659846849": {
@@ -140,7 +140,7 @@
   "posted_at": "2026-09-20 18:10:42",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '17991786659846849' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "17985689274025275": {
@@ -148,7 +148,7 @@
   "posted_at": "2026-09-20 18:13:48",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '17985689274025275' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "17932897182146912": {
@@ -156,7 +156,7 @@
   "posted_at": "2026-10-02 18:16:25",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '17932897182146912' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18110155550599545": {
@@ -164,7 +164,7 @@
   "posted_at": "2026-10-02 18:19:12",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18110155550599545' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18126423664798528": {
@@ -172,7 +172,7 @@
   "posted_at": "2026-10-02 18:21:14",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18126423664798528' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18021886946714525": {
@@ -180,7 +180,7 @@
   "posted_at": "2026-10-02 18:23:18",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18021886946714525' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "17996750877031157": {
@@ -188,7 +188,7 @@
   "posted_at": "2026-10-02 18:26:04",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '17996750877031157' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18198513775376041": {
@@ -196,7 +196,7 @@
   "posted_at": "2026-10-02 18:28:48",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18198513775376041' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18020144786929966": {
@@ -204,7 +204,7 @@
   "posted_at": "2026-10-02 18:31:29",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18020144786929966' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "17910111753512878": {
@@ -212,7 +212,7 @@
   "posted_at": "2026-10-09 18:08:26",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '17910111753512878' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18115898356998355": {
@@ -220,7 +220,7 @@
   "posted_at": "2026-10-09 18:11:37",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18115898356998355' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18412387897080880": {
@@ -228,7 +228,7 @@
   "posted_at": "2026-10-09 18:14:47",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18412387897080880' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18145691152571103": {
@@ -236,7 +236,7 @@
   "posted_at": "2026-10-15 18:11:14",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18145691152571103' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18641021959010773": {
@@ -244,7 +244,7 @@
   "posted_at": "2026-10-15 18:14:30",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18641021959010773' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18383645980234001": {
@@ -252,7 +252,7 @@
   "posted_at": "2026-10-15 18:17:35",
   "log": "logs/publish.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18383645980234001' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18126879412905430": {
@@ -260,7 +260,7 @@
   "posted_at": "2026-10-27 16:12:44",
   "log": "logs/collect.log",
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18126879412905430' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
  },
  "18111801026370324": {
@@ -271,7 +271,8 @@
   "stage": "publish",
   "card_id": 59,
   "ig_deleted": true,
-  "checked_at": "2026-10-31T01:32:51+09:00",
+  "checked_at": "2026-11-02T14:35:17+09:00",
   "error": "400 code=100 subcode=33: Unsupported get request. Object with ID '18111801026370324' does not exist, cannot be loaded due to missing permissions, or does not support this operation. Ple"
- }
+ },
+ "_checked_on": "2026-11-02"
 }

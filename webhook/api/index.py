@@ -555,6 +555,7 @@ async def dash_cards(day_param: str | None = Query(None, alias="date"), channel:
                 "title": (news.get(c["news_item_id"]) or {}).get("title") or c["final_title"],
                 "url": (news.get(c["news_item_id"]) or {}).get("url"),
                 "published": c["published"],
+                "deleted": c.get("publish_status") == "deleted",  # 인스타에서 지운 게시물(mark_deleted_media.py가 하루 1번 확인)
                 "approval": c.get("approval"),
                 "approval_label": APPROVAL_LABELS.get(c.get("approval")),
                 "approved_by": c.get("approved_by"),
@@ -1140,7 +1141,8 @@ const POLL_MS = 4000;
 const CHANNELS = {channels_json};
 const CH_TINT = {economy: "var(--econ)", youth: "var(--youth)"};  // 채널 표시에만 쓰는 색
 const AVATAR_BG = {youth: "#C9356A"};
-let CH = new URLSearchParams(location.search).get("ch") || localStorage.getItem("mh_channel") || "economy";
+const QS = new URLSearchParams(location.search);  // ?channel=youth(또는 ?ch=)로 열면 그 채널 탭부터
+let CH = QS.get("channel") || QS.get("ch") || localStorage.getItem("mh_channel") || "economy";
 if (!CHANNELS[CH]) CH = Object.keys(CHANNELS)[0];
 const OV_MS = 30000;
 let ovCache = null, ovAt = 0;
@@ -1412,7 +1414,7 @@ async function loadCards() {
   const opts = days.map(x => `<option value="${esc(x)}"${x === d.date ? " selected" : ""}>${esc(x)}</option>`).join("");
   const sets = d.cards.map(c => `<div class="panel set">
       <h2><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0">${catChip(c.category)}<span style="min-width:0">${c.url ? `<a href="${safeUrl(c.url)}" target="_blank" rel="noopener" style="text-decoration:none">${esc(c.title)}</a>` : esc(c.title)}</span></span>
-      ${c.published ? stChip("게시됨 · " + c.time, "var(--green)", "ok") : stChip("미게시 · " + c.time, "var(--tint)", "dot")}</h2>
+      ${c.deleted ? stChip("삭제됨(인스타) · " + c.time, "var(--sub)", "dot") : c.published ? stChip("게시됨 · " + c.time, "var(--green)", "ok") : stChip("미게시 · " + c.time, "var(--tint)", "dot")}</h2>
       ${apView(c)}
       ${c.slides.length ? `<div class="slides">${c.slides.map((s, i) => `<img loading="lazy" src="${safeUrl(s)}" alt="${i + 1}번째 카드" data-set="${c.id}" data-i="${i}">`).join("")}</div>` : `<p class="muted">스토리지에 이미지가 없어요 (게시 전에 로컬에서만 만들어진 카드세트예요)</p>`}
     </div>`).join("");

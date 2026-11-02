@@ -17,10 +17,20 @@ import config
 import events
 import generate_cardset
 import keyword_stats
+import mark_deleted_media
 import publish_instagram
 
 
+def check_deleted_media() -> None:
+    """인스타에서 지운 게시물 표시(채널마다 하루 1번, 대시보드 "삭제됨"). 실패해도 수집은 계속한다."""
+    try:
+        mark_deleted_media.daily()
+    except Exception as e:
+        print(f"[run_daily] 삭제된 게시물 확인 건너뜀: {e}", file=sys.stderr)
+
+
 def run_collect_phase() -> None:
+    check_deleted_media()
     # 디징(youth)은 2026-10-31부터 기사 대신 공식 모집 공고를 원본으로 쓴다. keywords.json·뉴스 수집은 이 경로에서 쓰지 않는다.
     if config.CHANNEL_CONFIG.get("source") == "listings":
         collect_listings.main()
