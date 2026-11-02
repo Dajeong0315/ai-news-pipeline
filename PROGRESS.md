@@ -2,13 +2,13 @@
 
 마지막 갱신: 2026-11-02
 
-## 2026-11-02 경제 자동 게시 재개 · 디징 승인 후 게시 · 콜라보 게시 · 댓글 자료 DM 준비 (코드 완료, cards 마이그레이션 적용·디징 스케줄 켜기는 운영자 승인 대기)
+## 2026-11-02 경제 자동 게시 재개 · 디징 승인 후 게시 · 콜라보 게시 · 댓글 자료 DM 준비 (코드 완료, 마이그레이션 적용·디징 스케줄 켬)
 
 - **경제 재개**: 10/31 경제 품질 개선 미커밋분을 먼저 커밋(85da9dd). `register_schedule.py --enable economy` → EconCardNews-Collect Ready, 다음 실행 11/2 07:30.
   확인: reels true(도입부 카운트업, reel_intro 없음 = 경제 기본), daily_posts 1, caption_rules·check_caption·hashtag_rules·exclude_title_patterns·selector_extra 적용, share_post_to_story false. 경제 dry-run 게시 대상 0건·게시 가능 1건.
 - **register_schedule.py**: `--enable`에 여러 채널, 없는 채널은 상태 유지(전에는 다른 채널을 끔). 디징 반복 작업 DijingCardNews-Publish(09:00~23:00 10분마다, channel.json approved_publish_window·every_min) 추가, 실행 파일까지 맞춤.
 - **디징 승인 흐름**
-  - `sql/2026-11-02_card_approval.sql`: cards.approval(pending/approved/rejected/regenerate/replaced)·approved_at·approved_by·regenerated_from. **아직 미적용**(적용 전엔 디징 카드 생성·10분 작업이 approval 칸 없음 오류).
+  - `sql/2026-11-02_card_approval.sql`: cards.approval(pending/approved/rejected/regenerate/replaced)·approved_at·approved_by·regenerated_from. 11/2 오전 운영자 적용, 칸 생김 확인(기존 카드 approval NULL).
   - 12:00·19:00 DijingCardNews-1·2 = `run_youth.bat`(run_daily cards): 실행마다 공고 1건(`cards_per_run`, 하루 daily_posts 2 안) → 카드 → approval pending
     → `card_preview.py` 텔레그램 미리보기(sendMediaGroup 로컬 파일 + 캡션 전문 + 공식 링크 + [게시][다시 만들기][건너뛰기]). 두 번째 카드는 템플릿 순번이 이어짐.
   - 웹훅 `card:` 콜백 + 대시보드 카드 탭 버튼(승인 대기 디징 카드만, POST /api/dash/cards/{id}/approval, Origin 확인). pending에서만 바꿔 두 곳 동시 클릭도 한 번. 결과는 미리보기 버튼 자리에 표시.
@@ -23,7 +23,9 @@
 - **댓글 → 자료 DM 준비**(`comment_dm.py`): channel.json comment_dm(디징 "가이드", 경제 "자료", hub_url 빈 값 → 문구 안 넣음). 캡션 본문 마지막 친구 태그 줄(경제는 "참고:" 줄) 바로 앞 1줄, 2200자 검사 포함.
   게시 성공 시 outbox/guides.json(대상·혜택·기간·신청 방법·준비물·주의·공식 링크, notion_url null). 형식은 channels/youth/outbox/README.md.
 - .gitignore: growth/ 추가(outbox/*.json은 이미 있음). 시험: 컴파일, 캡션 문구 위치(디징·경제), guides 항목, 웹훅 승인 로직(가짜 데이터), 경제 dry-run, 텔레그램 미리보기(이미 게시된 card 62로 1회). 실제 게시 없음.
-- 주의: 11/2 09:30 예약 작업(170142 다시 만들기)은 마이그레이션 전이면 cards 넣기에서 실패한다(approval 칸 없음). 적용 뒤면 pending + 미리보기로 간다.
+- 11/2 09:19 마이그레이션 적용 뒤: 디징 `--approved-only --dry-run` 정상(다시 만들기 0·게시 대상 0·남은 자리 1), `register_schedule.py --enable economy youth`
+  → DijingCardNews-1(12:00)·-2(19:00)·-Publish(09:00~23:00 10분) Ready. -Publish 첫 실행 09:20 정상 종료(업로드 대상 0건). 웹훅 배포 확인(POST /api/dash/cards/{id}/approval 비로그인 401, 없는 경로 404).
+  경제 07:30 실행은 정상 종료(0)였지만 QA가 지갑 영향 없는 기사라 걸러 오늘 카드 0건. 170142 옛 카드(65, 11/1)는 approval NULL이라 게시 안 됨, 09:30 예약 작업이 지우고 pending으로 다시 만든다.
 
 ## 2026-11-02 디징 스토리 공유를 Aside 루틴으로 이관 (코드 완료, Aside 루틴 등록은 운영자)
 
