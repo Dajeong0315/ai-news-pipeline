@@ -145,3 +145,42 @@ def _call(system_prompt: str, user_content: str, max_tokens: int | None, model: 
     if isinstance(response, (dict, list)):
         return json.dumps(response, ensure_ascii=False)
     return response.strip()
+
+
+# --- 배경 사진 속 글자 검사(2026-11-02) ---
+# FLUX 배경에 깨진 한글 간판·책 글자가 자꾸 나온다(디징 170142 r1 거리 간판, r2 창밖 간판). 프롬프트의 "no text"만으로는
+# 못 막아서 비전 모델에게 직접 묻는다. 11/2 시험: 글자 있는 2장·없는 2장을 모두 맞힘, 한 장에 약 39뉴런.
+VISION_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct"
+VISION_TEXT_QUESTION = (
+    "Look carefully at this photo. Is there ANY visible writing anywhere: letters, words, numbers, characters "
+    "(Korean, Chinese, Japanese, English, or garbled pseudo-text), on signs, storefronts, screens, papers, books, "
+    "packaging or labels? Answer with JSON only: {\"text\": true or false, \"where\": \"short description\"}"
+)
+
+
+def image_has_text(path) -> tuple[bool, str]:
+    """(글자가 보이는지, 어디에). 응답을 못 읽으면 예외 — 부르는 쪽이 검사 못 한 사진으로 다룬다."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    image = Image.open(path).convert("RGB")
+    image.thumbnail((768, 768))
+    buf = io.BytesIO()
+    image.save(buf, "JPEG", quality=85)
+    uri = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    url = f"https://api.cloudflare.com/client/v4/accounts/{config.CLOUDFLARE_ACCOUNT_ID}/ai/run/{VISION_MODEL}"
+    payload = {"messages": [{"role": "user", "content": [{"type": "text", "text": VISION_TEXT_QUESTION},
+                                                         {"type": "image_url", "image_url": {"url": uri}}]}],
+               "max_tokens": 200}
+    resp = _post(url, VISION_MODEL, json=payload, headers={"Authorization": f"Bearer {config.CLOUDFLARE_API_TOKEN}"},
+                 timeout=120)
+    data = resp.json()
+    if not data.get("success"):
+        raise RuntimeError(f"비전 모델 호출 실패: {data.get('errors')}")
+    _record_usage(VISION_MODEL, data["result"].get("usage") or {})
+    answer = data["result"].get("response")
+    if isinstance(answer, str):
+        answer = json.loads(answer[answer.index("{"): answer.rindex("}") + 1])
+    return bool(answer["text"]), str(answer.get("where") or "")

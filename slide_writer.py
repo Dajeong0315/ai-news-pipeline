@@ -667,6 +667,11 @@ def check_deck(deck: dict, article: str, published: date | None = None, listing:
     if listing:
         check_listing_caption(deck, listing)
         check_listing_text(factual_caption(str(deck.get("caption") or "")), article, listing.get("host"), "캡션")
+        # 11/2 디징 170142: 표지가 "청년인턴 116명 모집"뿐이라 어느 기관 인턴인지 몰랐다(v2는 check_v2가 본다)
+        names = host_names(listing.get("host"))
+        if not v2 and names and not any(_compact(n) in _compact(str(slides[0].get("title") or "")) for n in names):
+            raise ValueError(f"공고 표지 제목에 기관 이름({display_host(listing.get('host'))})이 없음"
+                             f"(첫 줄에 줄이지 말고 그대로): {slides[0].get('title')!r}")
     check_plan_notice(deck, article)
 
 
@@ -773,7 +778,7 @@ COVER_TILE_ROWS, COVER_TILE_CHARS = 2, 5
 _SCRIPT_RE = re.compile(r"^[a-z][a-z' .,&!?-]*$")  # 영문 필기체 글꼴(Allura)은 한글이 없다
 
 
-def clean_props(props, article: str) -> dict:
+def clean_props(props, article: str, host: str | None = None) -> dict:
     """틀린 항목은 덱을 다시 쓰게 하지 않고 버린다(템플릿 기본값이 대신 들어감). 장식 문구 하나 때문에
     무료 한도 안에서 덱 전체를 재생성할 가치는 없다. 숫자·금지 표현·한자 기준은 슬라이드와 같다."""
     if not isinstance(props, dict):
@@ -801,7 +806,10 @@ def clean_props(props, article: str) -> dict:
     if COVER_TILES and isinstance(tiles, str):
         rows = [re.sub(r"\s", "", r) for r in tiles.replace("\\n", "\n").split("\n")]
         rows = [r for r in rows if r]
-        if 1 <= len(rows) <= COVER_TILE_ROWS and all(ok(r, COVER_TILE_CHARS) for r in rows):
+        # 공고 기관명은 공식 이름에서 이어진 글자만("도로공단"은 한국도로공사로 읽힌다 → "도로교통"), 11/2 디징 170142
+        names = [_compact(n) for n in host_names(host)]
+        if (1 <= len(rows) <= COVER_TILE_ROWS and all(ok(r, COVER_TILE_CHARS) for r in rows)
+                and (not names or any(rows[0] in n for n in names))):
             out["cover_tiles"] = "\n".join(rows)
     return out
 
@@ -853,6 +861,8 @@ def write_deck(title: str, article: str, category: str, hint: str = "", publishe
     if WRITER_V2:
         return write_deck_v2(title, article, category, hint=hint, published=published, listing=listing, outlet=outlet)
     title = strip_outlet(title)
+    if listing and listing.get("host") and display_host(listing["host"]) not in title:  # 잡알리오 제목엔 기관명이 없다
+        title = f"{display_host(listing['host'])} {title}"
     article = clean_article(article)
     if CHECK_DEADLINE and not listing:  # 사후 보도는 모델을 부르기 전에 거른다(뉴런 절약)
         check_post_event(article, published)
@@ -864,7 +874,9 @@ def write_deck(title: str, article: str, category: str, hint: str = "", publishe
             "덱의 \"ended\"는 false. "
             f"캡션 {CAPTION_DATE_MARK} 줄에 신청 기간과 \"D-{listing['days_left']}\"를 그대로 쓴다"
             f"(예: \"{CAPTION_DATE_MARK} ~11월 12일까지 (D-{listing['days_left']})\", 날짜는 원문 표기). "
-            f"캡션 ✅ 신청 방법 줄에 공식 기관명 \"{display_host(listing.get('host'))}\"을 쓴다."
+            f"캡션 ✅ 신청 방법 줄에 공식 기관명 \"{display_host(listing.get('host'))}\"을 쓴다. "
+            f"표지 title 첫 줄은 기관명 \"{display_host(listing.get('host'))}\"을 줄이지 않고 그대로, 둘째 줄에 모집 종류를 쓴다"
+            f"(예: \"{display_host(listing.get('host'))}\\n청년인턴 모집\"). 카드만 봐도 어느 기관의 무슨 모집인지 바로 보이게."
         )
     if hint:
         source += f"\n\n[지난번 카드 렌더에서 걸린 문제 — 이번엔 피할 것]\n{hint}"
@@ -924,7 +936,8 @@ def write_deck(title: str, article: str, category: str, hint: str = "", publishe
             # 예시 문구를 베낀 값은 버린다 → 없으면 기사 제목으로 배경을 만든다(2026-10-30 주제와 무관한 책상 사진)
             deck["image_prompt"] = next((p for p in (deck.get("image_prompt"), draft.get("image_prompt"))
                                          if isinstance(p, str) and p.strip() and not p.startswith(_IMAGE_PROMPT_EXAMPLE)), None)
-            deck["props"] = clean_props(deck.get("props") or draft.get("props"), article + " " + title)
+            deck["props"] = clean_props(deck.get("props") or draft.get("props"), article + " " + title,
+                                        listing.get("host") if listing else None)
             return deck
     raise RuntimeError(f"슬라이드 생성 {MAX_ATTEMPTS}회 실패: {last_error}")
 
@@ -1277,7 +1290,7 @@ def write_deck_v2(title: str, article: str, category: str, hint: str = "", publi
         deck["fact_table"] = table  # 검토용(어느 사실이 어느 장에 갔는지)
         deck["image_prompt"] = deck.get("image_prompt") if isinstance(deck.get("image_prompt"), str) and not str(
             deck.get("image_prompt")).startswith(_IMAGE_PROMPT_EXAMPLE) else None
-        deck["props"] = clean_props(deck.get("props"), article + " " + title)
+        deck["props"] = clean_props(deck.get("props"), article + " " + title, listing.get("host") if listing else None)
         return deck
     raise RuntimeError(f"슬라이드 생성(v2) 3회 실패: {last_error}")
 

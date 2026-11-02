@@ -21,7 +21,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
-from PIL import Image, ImageStat
+from PIL import Image, ImageFilter, ImageStat
 
 import auto_select
 import card_preview
@@ -41,6 +41,10 @@ log = logging.getLogger("generate_cardset")
 KST = timezone(timedelta(hours=9))
 TEMPLATES_DIR = Path("card_templates")
 MAX_RENDER_ATTEMPTS = 2  # 글자 넘침이면 슬라이드를 다시 써서 한 번 더 렌더
+# 배경 사진 속 글자(깨진 한글 간판 등)를 비전 모델로 검사해 다시 뽑는다. 채널 설정 "check_background_text"(디징 켬)
+BG_TEXT_CHECK = bool(config.CHANNEL_CONFIG.get("check_background_text"))
+BG_TEXT_ATTEMPTS = 3  # 그래도 글자가 나오면 흐림 처리
+BG_BLUR_RADIUS = 24
 # 순위 대체(2026-11-02, 경제): 선정 기사가 카드 작성 단계에서 떨어지면 오늘 순위의 다음 기사로 다시 만든다.
 # 하루 시도는 max_daily_attempts(경제 3)번까지. 텍스트 모델을 부른 시도만 센다(오늘 usage 기록, 수동 재실행 포함).
 # 원문을 못 받아 모델 호출 없이 끝난 시도는 뉴런을 안 써서 세지 않는다.
@@ -109,13 +113,31 @@ def make_background(subject: str, template: str, out_dir: Path) -> Path:
     if suffix := config.CHANNEL_CONFIG.get("image_prompt_suffix"):
         prompt += f", {suffix}"
     last_error: Exception | None = None
+    path = None
     with httpx.Client(headers=headers, transport=httpx.HTTPTransport(local_address="0.0.0.0")) as client:
-        for _ in range(2):
+        for _ in range(BG_TEXT_ATTEMPTS if BG_TEXT_CHECK else 2):
             try:
-                return template_images.generate(prompt, out_dir / "background.jpg", client)
+                path = template_images.generate(prompt, out_dir / "background.jpg", client)
             except Exception as e:
                 last_error = e
-    raise RuntimeError(f"배경 이미지 생성 실패: {last_error}")
+                continue
+            if not BG_TEXT_CHECK:
+                return path
+            try:
+                has_text, where = llm_client.image_has_text(path)
+            except Exception as e:  # 검사 못 한 사진은 믿지 않는다 → 아래 흐림 처리
+                log.warning("배경 글자 검사 실패: %s", e)
+                break
+            if not has_text:
+                return path
+            log.warning("배경 사진에 글자가 보여 다시 만듦(%s)", where)
+    if path is None:
+        raise RuntimeError(f"배경 이미지 생성 실패: {last_error}")
+    # 몇 번 뽑아도 글자가 나오면 크게 흐려 글자로 안 읽히게 한다(색·분위기는 남는다)
+    log.warning("배경 글자를 못 피해서 흐림 처리: %s", path)
+    events.record("cardset", "retry", message=f"배경 사진 글자를 {BG_TEXT_ATTEMPTS}번 안에 못 피해서 흐림 처리함")
+    Image.open(path).convert("RGB").filter(ImageFilter.GaussianBlur(BG_BLUR_RADIUS)).save(path, quality=92)
+    return path
 
 
 def render(template: str, deck: dict, background: Path, out_dir: Path) -> tuple[bool, str]:
