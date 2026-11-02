@@ -83,13 +83,13 @@
 
 ## 댓글 → 자료 DM: `guides.json` (2026-11-02)
 
-DM 발송은 리틀리가 한다. 파이프라인은 캡션 안내 문구와 이 자료 목록만 만들고, Aside가 노션 허브 아래 하위 페이지를 만든다.
+DM 발송은 리틀리가 한다. 파이프라인은 캡션 안내 문구와 이 자료 목록만 만들고, 노션 가이드 페이지·리틀리 설정은 Aside 루틴이 한다.
 
-- 캡션 안내 문구: channel.json `comment_dm`(디징 키워드 "가이드", 경제 "자료")의 `caption_line`을 캡션 본문 마지막 친구 태그 줄 바로 앞에 1줄.
-  `hub_url`이 비어 있으면 넣지 않는다. Aside가 노션 허브를 만든 뒤 channel.json `comment_dm.hub_url`을 채우면 그다음 게시부터 들어간다
-  (카드 생성 때 못 넣었으면 게시 직전에 넣는다, 2200자를 넘으면 뺀다).
-- 게시 성공 시 파이프라인(`comment_dm.add_guide`)이 항목을 하나 넣는다. Aside는 `notion_url`만 채우고 다른 필드는 그대로 둔다.
-- 경제 채널은 `channels/economy/outbox/guides.json`(같은 형식, 공고 필드는 대부분 null).
+- 설정: channel.json `comment_dm` = `keyword`(디징 "가이드", 경제 "자료")·`caption_line`·`hub_url`(노션 허브)·`enabled`(빠지면 켜짐).
+  묘한경제는 리틀리 연동 전이라 `enabled: false` → 캡션 문구도, guides.json 기록도 안 한다.
+- 캡션: 켜진 채널이면 `caption_line`을 캡션 본문 마지막 친구 태그 줄 바로 앞에 1줄(태그 줄이 없으면 본문 마지막 줄 앞).
+  2200자 검사에 포함된다. 카드 생성 때 넣고, 못 넣었으면 게시 직전에 넣는다(넣으면 2200자를 넘을 때는 뺀다).
+- 게시 성공 시 파이프라인(`comment_dm.add_guide`)이 `items`에 항목을 하나 넣는다(같은 media_id는 한 번만). 캐러셀 기준, 릴스는 따로 안 넣는다.
 
 ```json
 {
@@ -97,17 +97,42 @@ DM 발송은 리틀리가 한다. 파이프라인은 캡션 안내 문구와 이
     {
       "media_id": "18360383050264625",
       "permalink": "https://www.instagram.com/p/DfL4CK3ErbD/",
-      "title": "카드 제목",
-      "target": "대상(공고 원문, 없으면 캡션 📌 줄)",
-      "benefit": "혜택(공고 원문, 없으면 캡션 💼 줄)",
-      "period": "2026-10-27 ~ 2026-11-16",
-      "how_to_apply": "신청 방법(캡션 ✅ 줄)",
-      "materials": "준비물·제출 서류(원문에 있을 때만, 없으면 null)",
-      "cautions": "주의(캡션 ⚠️ 줄)",
-      "official_url": "공식 공고 링크",
+      "title": "2026년도 하반기 체험형 청년인턴 채용 공고",
+      "host": "한국도로교통공단",
+      "target": "신입 · 청년인턴(체험형)",
+      "benefit": "청년인턴(체험형) 116명 채용",
+      "apply_start": "2026-10-26",
+      "apply_end": "2026-11-09T18:00:00+09:00",
+      "how_to_apply": "온라인 원서접수 https://koroad.saramin.co.kr (주최 한국도로교통공단)",
+      "documents": null,
+      "cautions": "사회형평·장애·의사상자는 가점·별도 전형이니 서류 확인 필수",
+      "official_url": "https://www.koroad.or.kr/main/recruit/recruitment_list.do",
+      "caption": "게시한 캡션 전문",
       "published_at": "2026-11-02T12:10:31+09:00",
-      "notion_url": null
+      "notion_url": null,
+      "notion_page_id": null,
+      "littly_set": null,
+      "guide_done_at": null
     }
   ]
 }
 ```
+
+| 필드 | 누가 쓰나 | 뜻 |
+|-|-|-|
+| media_id·permalink | 파이프라인 | 게시한 캐러셀 ID·링크(링크를 못 받으면 null) |
+| title | 파이프라인 | 카드 제목(공고명) |
+| host | 파이프라인 | 주최·기관(공고 출처 기관) |
+| target·benefit | 파이프라인 | 대상·혜택. 공고 원문 값, 없으면 캡션 📌·💼 줄 |
+| apply_start·apply_end | 파이프라인 | 접수 시작·마감. 원문에 그 날짜의 시각이 있으면 KST ISO(`2026-11-09T18:00:00+09:00`), 없으면 날짜만(`2026-10-26`). 상시·기사 카드는 null |
+| how_to_apply·cautions | 파이프라인 | 캡션 ✅·⚠️ 줄 |
+| documents | 파이프라인 | 제출 서류·준비물. 원문에 있을 때만(앞뒤 3줄 요약), 없으면 null |
+| official_url | 파이프라인 | 공식 공고 링크(없으면 수집 출처 링크) |
+| caption | 파이프라인 | 실제 게시한 캡션 전문 |
+| published_at | 파이프라인 | 게시 시각 KST ISO |
+| notion_url·notion_page_id | Aside | 노션 허브 아래 만든 가이드 페이지 링크·ID |
+| littly_set | Aside | 리틀리 댓글 DM 설정을 마쳤으면 true(실패면 false, 아직이면 null) |
+| guide_done_at | Aside | 노션 페이지·리틀리 설정을 다 끝낸 시각 KST ISO |
+
+- Aside는 notion_url·notion_page_id·littly_set·guide_done_at만 바꾸고 다른 항목·필드는 그대로 둔다. 파일을 통째로 다시 쓸 때도 읽은 내용을 보존한다.
+- 경제 채널은 `channels/economy/outbox/guides.json`(같은 형식, 기사 카드라 host·target·apply_* 등은 대개 null). 지금은 꺼져 있어 안 생긴다.

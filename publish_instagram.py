@@ -139,7 +139,7 @@ def news_for(item: dict) -> dict | None:
     if not item.get("news_item_id"):
         return None
     rows = (get_client().table("news_items")
-            .select("id,title,url,official_url,apply_start,apply_end,listing,source_type")
+            .select("id,title,source,url,official_url,apply_start,apply_end,listing,source_type")
             .eq("id", item["news_item_id"]).execute().data or [])
     return rows[0] if rows else None
 
@@ -337,7 +337,7 @@ def main(argv: list[str] | None = None):
         if story_queue.enabled():
             story_queue.add(media_id, item["final_title"], item["id"])
         # 댓글 → 자료 DM용 자료 목록(Aside가 노션 페이지를 만들고 notion_url을 채움)
-        if comment_dm.CFG:
+        if comment_dm.enabled():
             comment_dm.add_guide(comment_dm.guide_entry(media_id, instagram_client.permalink(media_id),
                                                         item["final_title"], caption, plan["news"]))
         reel_id = publish_reel(item, out_dir / "reel.mp4", caption, collaborators)

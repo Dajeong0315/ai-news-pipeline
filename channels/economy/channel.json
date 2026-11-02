@@ -168,6 +168,7 @@
   "comment_dm": {
     "keyword": "자료",
     "caption_line": "댓글에 '자료' 남기면 계산표 DM으로 보내줄게",
-    "hub_url": ""
+    "hub_url": "https://aboard-toy-146.notion.site/40b0bd3313a180879fa4e662c58dd615",
+    "enabled": false
   }
 }

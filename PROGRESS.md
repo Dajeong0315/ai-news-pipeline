@@ -22,6 +22,8 @@
   Aside가 넘긴 output 폴더 카드는 `register_card.py <폴더> --category … [--news-item N]`로 승인 흐름에 올림.
 - **댓글 → 자료 DM 준비**(`comment_dm.py`): channel.json comment_dm(디징 "가이드", 경제 "자료", hub_url 빈 값 → 문구 안 넣음). 캡션 본문 마지막 친구 태그 줄(경제는 "참고:" 줄) 바로 앞 1줄, 2200자 검사 포함.
   게시 성공 시 outbox/guides.json(대상·혜택·기간·신청 방법·준비물·주의·공식 링크, notion_url null). 형식은 channels/youth/outbox/README.md.
+  11/2 오전 갱신: hub_url 채움(노션 허브 2개), 경제는 `enabled: false`(리틀리 연동 전, 문구·기록 둘 다 안 함). guides.json 항목을 host·apply_start·apply_end(원문에 그 날짜 시각이 있으면 KST ISO, 없으면 날짜만)·
+  documents·caption 전문·notion_page_id·littly_set·guide_done_at으로 바꿈(period·materials 없앰). 실제 공고 6건으로 시각 추출 확인(170142 마감 11/9 18:00).
 - .gitignore: growth/ 추가(outbox/*.json은 이미 있음). 시험: 컴파일, 캡션 문구 위치(디징·경제), guides 항목, 웹훅 승인 로직(가짜 데이터), 경제 dry-run, 텔레그램 미리보기(이미 게시된 card 62로 1회). 실제 게시 없음.
 - 11/2 09:19 마이그레이션 적용 뒤: 디징 `--approved-only --dry-run` 정상(다시 만들기 0·게시 대상 0·남은 자리 1), `register_schedule.py --enable economy youth`
   → DijingCardNews-1(12:00)·-2(19:00)·-Publish(09:00~23:00 10분) Ready. -Publish 첫 실행 09:20 정상 종료(업로드 대상 0건). 웹훅 배포 확인(POST /api/dash/cards/{id}/approval 비로그인 401, 없는 경로 404).
