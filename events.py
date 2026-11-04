@@ -10,6 +10,9 @@ record()는 예외를 밖으로 던지지 않고 경고 로그만 남긴다.
 import logging
 import os
 import uuid
+import socket
+import subprocess
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import config
@@ -24,6 +27,14 @@ RUN_ID = os.environ.get("PIPELINE_RUN_ID") or (
 TRIGGER = os.environ.get("PIPELINE_TRIGGER", "local")
 
 
+try:
+    if not (Path(__file__).parent / '.git').exists():
+        raise RuntimeError('Archive source; do not inherit an enclosing repository SHA')
+    COMMIT = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=Path(__file__).parent, stderr=subprocess.DEVNULL, text=True).strip()
+except Exception:
+    COMMIT = "archive-source:6e951ec0812ef8ea9e901ad385d57e1ad9e7bdec+operating-patch+recovery"
+IDENTITY = {"host": socket.gethostname(), "pid": os.getpid(), "commit": COMMIT}
+
 def record(
     stage: str,
     status: str,
@@ -35,6 +46,9 @@ def record(
     news_item_id: int | None = None,
     card_id: int | None = None,
 ) -> None:
+    log.info("run_id=%s channel=%s stage=%s status=%s", RUN_ID, config.CHANNEL, stage, status)
+    detail = {**IDENTITY, **(detail if isinstance(detail, dict) else {"payload": detail})}
+    detail = __import__("json").loads(config.redact(__import__("json").dumps(detail, ensure_ascii=False)))
     row = {
         "run_id": RUN_ID,
         "channel": config.CHANNEL,

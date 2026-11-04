@@ -10,7 +10,11 @@ let chromium;
 try {
   ({ chromium } = require('playwright'));
 } catch (e) {
-  ({ chromium } = require(path.join(require('os').homedir(), '.cardnews-deps', 'node_modules', 'playwright')));
+  try {
+    ({ chromium } = require(path.join(__dirname, '..', 'environment', 'node_modules', 'playwright')));
+  } catch (_) {
+    ({ chromium } = require(path.join(require('os').homedir(), '.cardnews-deps', 'node_modules', 'playwright')));
+  }
 }
 
 const toUrl = (p, base) => (!p || /^(https?|file|data):/.test(p) ? p : pathToFileURL(path.resolve(base, p)).href);
@@ -28,7 +32,7 @@ const toUrl = (p, base) => (!p || /^(https?|file|data):/.test(p) ? p : pathToFil
   for (const k of Object.keys(mascots)) mascots[k] = toUrl(mascots[k], base);
 
   fs.mkdirSync(outDir, { recursive: true });
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.CARDNEWS_BROWSER_CHANNEL ? { channel: process.env.CARDNEWS_BROWSER_CHANNEL } : {});
   try {
     const page = await browser.newPage({ viewport: { width: 1080, height: 1350 }, deviceScaleFactor: 1 });
     await page.goto(pathToFileURL(templatePath).href, { waitUntil: 'networkidle' });

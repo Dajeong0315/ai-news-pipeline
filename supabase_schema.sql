@@ -50,6 +50,9 @@ CREATE TABLE cards (
     image_path     TEXT,
     publish_order  INT,
     published      BOOLEAN DEFAULT false,
+    approval       TEXT DEFAULT 'pending',
+    approval_chat_id BIGINT,
+    revision_request TEXT,
     created_at     TIMESTAMPTZ DEFAULT now()
 );
 

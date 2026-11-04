@@ -1,0 +1,1 @@
+{"name": "cardnews-deps", "private": true, "dependencies": {"playwright": "^1.61.1"}}

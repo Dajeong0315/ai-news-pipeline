@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- clipboard (디징, 2026-11-01 주간 리서치): 크라프트 클립보드에 끼운 크림색 "공고 요약지".
+     표지는 얇은 산스+명조 제목, 아래에 마스킹테이프로 붙인 필름톤 사진(아래 여백에 영문 필기체)과 단톡 메모지(hook).
+     속지는 같은 요약지 한 장: 어두운 라벨 태그 + 물결 밑줄 제목 + 체크박스 목록 / 두 칸 비교 / 큰 명조 숫자, 마지막 장은 서명줄과 확인 도장.
+     참고(구성만): linkareer 주간 활동 LIST의 "라벨 태그 두 칸 요약", weareyouth_kr Q&A 제목+물결 밑줄,
+     social_in_one "꼭 알아두세요" 체크 목록. 캐릭터·이모지·원색 없음. -->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Allura&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --desk: #ECE3D6; --kraft: #C9AF8C; --kraft2: #B99D78; --paper: #FBF8F2; --ink: #2E2925; --soft: #7D7268; --line: #E2D8CB;
+          --tan: #C7B08F; --note: #F1E6D0; --hl: #EADCC2; --sage: #8E9D86; --stamp: #A8705A; }
+  .slide { color: var(--ink); font-family: "Pretendard", sans-serif; background: var(--desk); }
+  .slide .bg img { filter: blur(22px) sepia(.35) saturate(.7) brightness(1.05); transform: scale(1.1); }
+  .slide .shade { background: rgba(236,227,214,.84); }
+
+  /* 클립보드 판과 집게 */
+  .deco .board { left: 46px; right: 46px; top: 64px; bottom: 30px; border-radius: 34px;
+                 background: linear-gradient(160deg, var(--kraft), var(--kraft2)); box-shadow: 0 18px 40px rgba(46,41,37,.16), inset 0 0 0 2px rgba(255,255,255,.12); }
+  .deco .clip { z-index: 3; left: 50%; top: 30px; width: 300px; height: 96px; margin-left: -150px; border-radius: 20px 20px 14px 14px;
+                background: linear-gradient(180deg, #D9D3CA, #A9A196); box-shadow: 0 6px 12px rgba(46,41,37,.22); }
+  .deco .clip::before { content: ""; position: absolute; left: 50%; top: 16px; width: 110px; height: 26px; margin-left: -55px; border-radius: 13px; background: #8F877C; box-shadow: inset 0 3px 4px rgba(0,0,0,.25); }
+  .deco .clip::after { content: ""; position: absolute; left: 24px; right: 24px; bottom: 12px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.35); }
+
+  /* 요약지(본문) */
+  .content { left: 84px; right: 84px; top: 140px; height: 1100px; background: var(--paper); border-radius: 12px;
+             padding: 96px 64px 64px; display: flex; flex-direction: column; box-shadow: 0 10px 24px rgba(46,41,37,.12); }
+  .head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 22px; border-bottom: 2px solid var(--ink); }
+  .tag { display: inline-block; background: var(--ink); color: var(--paper); font-size: 28px; font-weight: 500; padding: 8px 18px 9px; border-radius: 4px; letter-spacing: -.01em; }
+  .no { font-size: 26px; letter-spacing: .14em; color: var(--soft); }
+  .title .thin { font-weight: 300; } .title .serif { font-family: "Gowun Batang", serif; font-weight: 700; letter-spacing: -.02em; }
+
+  /* 표지 */
+  .k-cover .title { margin-top: 56px; font-size: 104px; line-height: 1.16; letter-spacing: -.045em; }
+  .k-cover .subtitle { margin-top: 26px; font-size: 36px; font-weight: 300; color: var(--soft); line-height: 1.45; }
+  .deco .pol { z-index: 2; left: 128px; top: 724px; width: 452px; padding: 16px 16px 0; background: #fff; transform: rotate(-3deg);
+               box-shadow: 0 10px 22px rgba(46,41,37,.16); }
+  .pol .ph { height: 380px; background-size: cover; background-position: center; filter: sepia(.22) saturate(.85) contrast(.95) brightness(1.03); }
+  .pol .script { position: static; display: block; height: 92px; line-height: 92px; text-align: center; font-family: "Allura", cursive; font-size: 54px; color: var(--ink); white-space: nowrap; }
+  .deco .tape { z-index: 3; width: 170px; height: 44px; background: rgba(214,196,166,.78); }
+  .deco .t1 { left: 270px; top: 700px; transform: rotate(-7deg); }
+  .deco .t2 { right: 230px; top: 742px; transform: rotate(5deg); width: 130px; }
+  .deco .note { z-index: 2; right: 124px; top: 770px; width: 400px; background: var(--note); padding: 30px 32px 34px; transform: rotate(2deg);
+                box-shadow: 0 10px 20px rgba(46,41,37,.13); }
+  .note b { display: block; font-size: 25px; font-weight: 500; letter-spacing: .1em; color: var(--soft); padding-bottom: 14px; margin-bottom: 8px; border-bottom: 1px dashed var(--tan); }
+  .note p { position: relative; font-size: 31px; font-weight: 300; line-height: 1.38; padding: 10px 0 10px 30px; color: #3b342f; }
+  .note p::before { content: ""; position: absolute; left: 0; top: 22px; width: 14px; height: 14px; border: 2px solid var(--soft); border-radius: 3px; }
+  .note p:first-of-type span { background: linear-gradient(transparent 58%, var(--hl) 58%); }
+  .no-hook .deco .pol { left: 50%; margin-left: -250px; width: 500px; top: 700px; }
+  .no-hook .pol .ph { height: 410px; }
+  .no-hook .deco .t1 { left: 455px; top: 676px; }
+
+  /* 속지 */
+  .slide:not(.k-cover) .in { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  h2.title { font-size: 86px; line-height: 1.2; letter-spacing: -.04em; }
+  .wave { width: 220px; height: 22px; margin-top: 26px; color: var(--tan); }
+  .body { margin-top: 40px; font-size: 44px; line-height: 1.7; font-weight: 300; color: #3d3631; }
+  .checks { margin-top: 30px; }
+  .checks li { display: flex; gap: 26px; align-items: flex-start; padding: 28px 0; border-bottom: 1px dashed var(--line); font-size: 46px; font-weight: 300; line-height: 1.4; }
+  .checks li i { flex-shrink: 0; width: 44px; height: 44px; margin-top: 7px; border: 2.5px solid var(--soft); border-radius: 7px; color: var(--sage); display: flex; align-items: center; justify-content: center; }
+  .checks li i svg { width: 34px; height: 34px; }
+  .cols { margin-top: 44px; display: flex; gap: 30px; }
+  .cols > div { flex: 1; min-width: 0; }
+  .cols b { display: block; margin-top: 24px; font-family: "Gowun Batang", serif; font-weight: 700; line-height: 1.1; letter-spacing: -.03em; }
+  .cols > div + div { border-left: 1px solid var(--line); padding-left: 30px; }
+  .value { font-family: "Gowun Batang", serif; font-weight: 700; font-size: 240px; line-height: 1; letter-spacing: -.04em; }
+  .label { margin-top: 30px; font-size: 54px; font-weight: 300; line-height: 1.4; }
+  .note2 { margin-top: 24px; font-size: 36px; color: var(--soft); font-weight: 300; line-height: 1.5; }
+  .quote { font-family: "Gowun Batang", serif; font-weight: 700; font-size: 84px; line-height: 1.4; letter-spacing: -.02em; }
+  .quote span { background: linear-gradient(transparent 60%, var(--hl) 60%); }
+  .sign { margin-top: 56px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-top: 1px solid var(--line); padding-top: 30px; }
+  .sign .script { font-family: "Allura", cursive; font-size: 58px; color: var(--ink); white-space: nowrap; }
+  .stamp { flex-shrink: 0; width: 168px; height: 168px; border: 4px solid var(--stamp); border-radius: 50%; color: var(--stamp); transform: rotate(-12deg);
+           display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 22px; letter-spacing: .06em; font-weight: 600; opacity: .85; }
+  .stamp small { font-size: 20px; letter-spacing: .08em; font-weight: 400; margin-top: 4px; }
+  .foot { left: 0; right: 0; bottom: 42px; justify-content: center !important; font-size: 23px; letter-spacing: .18em; color: #F7EFE2; }
+</style></head>
+<body><div id="deck"></div>
+<script>
+(() => {
+  const WAVE = `<svg viewBox="0 0 220 22" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M3 11c12-10 24-10 36 0s24 10 36 0 24-10 36 0 24 10 36 0 24-10 36 0 24 10 30 4"/></svg>`;
+  const CHECK = `<svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18l7 7 14-16"/></svg>`;
+  const mixTitle = (ctx, title) => String(title || "").split("\n")
+    .map((l, i, a) => `<span class="${i || a.length === 1 ? "serif" : "thin"}">${ctx.esc(l)}</span>`).join("<br>");
+  const pad = (k) => String(k).padStart(2, "0");
+  // 비교 값은 칸이 좁아 글자 수로 크기를 정한다(fitDeck은 비교 값을 줄이지 않음).
+  const cmpSize = (v) => { const n = String(v || "").length; return n <= 4 ? 112 : n <= 6 ? 90 : n <= 9 ? 66 : 52; };
+  window.TEMPLATE = {
+    variant(slide) { return slide.kind === "cover" && !(slide.hook || []).length ? "no-hook" : ""; },
+    deco(slide, ctx) {
+      const base = `<div class="board"></div><div class="clip"></div>`;
+      if (slide.kind !== "cover") return base;
+      const hook = (slide.hook || []).slice(0, 3);
+      const img = `background-image:url('${ctx.esc(ctx.job.background)}')`;
+      const memo = ctx.props.memo_title || "단톡에서";
+      return base +
+        `<div class="pol"><div class="ph" style="${img}"></div><span class="script">${ctx.esc(ctx.props.script || "saved for you")}</span></div>` +
+        `<div class="tape t1"></div>` +
+        (hook.length ? `<div class="note"><b>${ctx.esc(memo)}</b>${hook.map((h) => `<p><span>${ctx.esc(h)}</span></p>`).join("")}</div><div class="tape t2"></div>` : "");
+    },
+    content(slide, ctx) {
+      const head = `<div class="head"><span class="tag">${ctx.esc(slide.kicker || ctx.brand.series || ctx.brand.name || "")}</span><span class="no">No. ${pad(ctx.i)} / ${pad(ctx.n)}</span></div>`;
+      const h2 = slide.title ? `<h2 class="title">${mixTitle(ctx, slide.title)}</h2><div class="wave">${WAVE}</div>` : "";
+      const sheet = (inner) => head + `<div class="in">${inner}</div>`;
+      switch (slide.kind) {
+        case "cover":
+          // 제목을 패딩 없는 칸에 넣어야 fitDeck이 실제 글자 폭(종이 안쪽)에 맞춰 줄인다.
+          return head + `<div class="tw"><h1 class="title">${mixTitle(ctx, slide.title)}</h1></div>` + (slide.subtitle ? `<p class="subtitle">${ctx.text(slide.subtitle)}</p>` : "");
+        case "point": return sheet(h2 + `<p class="body">${ctx.text(slide.body)}</p>`);
+        case "list": return sheet(h2 + `<ul class="checks">${(slide.items || []).map((it) => `<li><i>${CHECK}</i><span>${ctx.text(it)}</span></li>`).join("")}</ul>`);
+        case "compare": return sheet(h2 + `<div class="cols">${(slide.items || []).slice(0, 3).map((it) =>
+            `<div><span class="tag">${ctx.text(it.label)}</span><b style="font-size:${cmpSize(it.value)}px">${ctx.text(it.value)}</b></div>`).join("")}</div>` +
+          (slide.note ? `<p class="body">${ctx.text(slide.note)}</p>` : ""));
+        case "stat": return sheet(`<p class="value">${ctx.text(slide.value)}</p><p class="label">${ctx.text(slide.label)}</p>` + (slide.note ? `<p class="note2">${ctx.text(slide.note)}</p>` : ""));
+        case "quote": return sheet(`<blockquote class="quote"><span>${ctx.text(slide.quote)}</span></blockquote>` + (slide.source ? `<p class="note2">${ctx.text(slide.source)}</p>` : ""));
+        case "closing": return sheet(h2 + (slide.body ? `<p class="body">${ctx.text(slide.body)}</p>` : "") +
+          `<div class="sign"><span class="script">${ctx.esc(ctx.props.closing_script || "check it together")}</span><span class="stamp">CHECKED<small>${ctx.esc(ctx.brand.name || "")}</small></span></div>`);
+      }
+      return "";
+    },
+    foot(slide, ctx) { return `<footer class="foot"><span>${ctx.esc((ctx.brand.handle || "").toUpperCase())}</span></footer>`; },
+  };
+})();
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>

@@ -1,3 +1,4 @@
 @echo off
 cd /d "%~dp0"
-".\venv\Scripts\python.exe" run_daily.py auto >> "logs\collect.log" 2>&1
+powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File ".\run-task.ps1" -Channel economy -Mode auto
+exit /b %errorlevel%

@@ -1,4 +1,9 @@
 .env
+channels/*/.env
+runtime.local.json
+environment/node_modules/
+transition/*.json
+transition/*.log
 __pycache__/
 *.pyc
 .venv/

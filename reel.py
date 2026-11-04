@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from media_tools import ffmpeg_path, video_duration
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
@@ -200,9 +201,7 @@ def plan_durations(count: int) -> tuple[float, float]:
 
 
 def duration(video: Path) -> float:
-    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video)],
-                         capture_output=True, text=True, timeout=60)
-    return float(out.stdout.strip() or 0)
+    return video_duration(video)
 
 
 def make_reel(out_dir: Path, music_dir: Path | None = None, deck: dict | None = None, intro: str | None = None) -> Path:
@@ -223,9 +222,10 @@ def make_reel(out_dir: Path, music_dir: Path | None = None, deck: dict | None = 
     shutil.rmtree(frames_dir, ignore_errors=True)
     make_intro(pngs[0], deck, frames_dir, dday=dday)
 
-    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(FPS), "-i", str(frames_dir / "%03d.png")]
+    cmd = [ffmpeg_path(), "-y", "-loglevel", "error", "-framerate", str(FPS), "-i", str(frames_dir / "%03d.png")]
     for png in pngs:  # 장마다 입력 2개: 흐린 배경용(반복) + 확대용(한 장)
-        cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{card_sec:.3f}", "-i", str(png), "-i", str(png)]
+        cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{card_sec:.3f}", "-i", str(png),
+                "-loop", "1", "-framerate", str(FPS), "-t", f"{card_sec:.3f}", "-i", str(png)]
     music = pick_music(music_dir)
     if music:
         cmd += ["-stream_loop", "-1", "-i", str(music)]
@@ -237,9 +237,8 @@ def make_reel(out_dir: Path, music_dir: Path | None = None, deck: dict | None = 
         filters.append(
             f"[{bg}:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},"
             f"boxblur=40:2,eq=brightness=-0.06[bb{i}];"
-            # 확대 떨림을 줄이려고 2배로 키운 뒤 zoompan으로 1080×1350을 잘라낸다
-            f"[{fg}:v]scale=2160:2700,zoompan=z='1+{ZOOM}*on/{card_frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-            f":d={card_frames}:s=1080x1350:fps={FPS}[f{i}];"
+            # 릴스에서는 카드 원본(1080×1350)을 확대하거나 잘라내지 않고 중앙에 그대로 놓는다.
+            f"[{fg}:v]scale=1080:1350:flags=lanczos,fps={FPS}[f{i}];"
             f"[bb{i}][f{i}]overlay=(W-w)/2:(H-h)/2:shortest=1,trim=duration={card_sec:.3f},setpts=PTS-STARTPTS,{norm}[s{i}]"
         )
     last, offset = "s0", INTRO_SEC - FADE_SEC

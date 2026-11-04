@@ -83,13 +83,13 @@ def send_media_group(paths: list[str], chat_id: str | None = None) -> dict:
 
 
 def card_keyboard(card_id: int) -> dict:
-    """디징 카드 승인 버튼(2026-11-02). 콜백은 webhook/api/index.py의 card: 처리."""
+    """카드 승인 버튼. 수정 요청을 누른 뒤 다음 텔레그램 메시지로 변경점을 받는다."""
     return {
         "inline_keyboard": [[
             {"text": "✅ 게시", "callback_data": f"card:approve:{card_id}"},
             {"text": "🔁 다시 만들기", "callback_data": f"card:regenerate:{card_id}"},
             {"text": "⏭ 건너뛰기", "callback_data": f"card:reject:{card_id}"},
-        ]]
+        ], [{"text": "✏️ 수정 요청", "callback_data": f"card:request_edit:{card_id}"}]]
     }
 
 

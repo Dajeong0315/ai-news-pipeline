@@ -7,7 +7,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parent
+load_dotenv(PROJECT_ROOT / ".env")
 
 # 채널 = 인스타그램 계정 하나(2026-10-30 IT·테크 채널 추가). 실행 전 환경변수 CHANNEL로 고른다.
 # 주제 설정은 channels/<채널>/channel.json·keywords.json, 계정 값은 economy만 루트 .env를 쓰고

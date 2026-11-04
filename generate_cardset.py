@@ -202,7 +202,7 @@ def listing_article(item: dict, days_left: int) -> str:
     return text
 
 
-def process_item(item: dict, slot: int = 0, history: list[dict] | None = None, folder_suffix: str = "") -> dict | None:
+def process_item(item: dict, slot: int = 0, history: list[dict] | None = None, folder_suffix: str = "", revision_request: str = "") -> dict | None:
     category = item["category"]
     template = pick_template(category, slot=slot)
     is_listing = item.get("source_type") == "listing"
@@ -253,10 +253,10 @@ def process_item(item: dict, slot: int = 0, history: list[dict] | None = None, f
     # 하루 게시 수를 정한 채널은 같은 카테고리가 하루 2건일 수 있어 기사 ID로 폴더를 나눈다.
     folder = f"{category}-{item['id']}" if config.CHANNEL_CONFIG.get("daily_posts") else category
     folder += folder_suffix  # 다시 만든 카드는 -r1·-r2 폴더(옛 카드 파일·Storage 미리보기를 덮어쓰지 않게)
-    out_dir = Path("output") / date.today().isoformat() / folder
+    out_dir = Path("output") / datetime.now(KST).date().isoformat() / folder
     out_dir.mkdir(parents=True, exist_ok=True)
     background = None
-    hint = ""  # 렌더에서 걸린 이유를 다음 작성에 알려줘 같은 실수를 반복하지 않게 한다
+    hint = revision_request.strip()  # 텔레그램 수정 요청을 다음 카드 작성에 그대로 전달한다
     # "29일"처럼 일만 쓴 날짜를 푸는 기준(기사 발행일, KST). 없으면 slide_writer가 오늘로 본다.
     published = (datetime.fromisoformat(item["published_at"]).astimezone(KST).date()
                  if item.get("published_at") else None)
@@ -487,7 +487,7 @@ def regenerate(card: dict) -> dict | None:
     n = len(done) + 1
     log.info("[%s] card %s 다시 만들기 %d/%d: %s", item["category"], card["id"], n, limit, item["title"])
     neurons_before = llm_client.NEURONS_USED
-    result = process_item(item, slot=made_today() + n, folder_suffix=f"-r{n}")
+    result = process_item(item, slot=made_today() + n, folder_suffix=f"-r{n}", revision_request=card.get("revision_request") or "")
     neurons = llm_client.NEURONS_USED - neurons_before  # 다시 만들기도 그날 사용량에 넣는다(검수분은 따로 기록됨)
     designer = float((json.loads((Path(result["out_dir"]) / "deck.json").read_text(encoding="utf-8")).get("designer_neurons")
                       if result and (Path(result["out_dir"]) / "deck.json").exists() else 0) or 0)

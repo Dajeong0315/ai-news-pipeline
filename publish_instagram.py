@@ -64,6 +64,7 @@ def fetch_unpublished(card_id: int | None = None) -> list[dict]:
         .in_("category", list(config.CATEGORIES))
         .gte("created_at", since.astimezone(timezone.utc).isoformat())
     )
+    query = query.or_("publish_status.is.null,publish_status.eq.ready")
     if requires_approval():  # 승인 안 된 카드는 어떤 경로로도 올라가지 않게
         query = query.eq("approval", "approved")
     if card_id is not None:  # 운영자가 검토한 카드 하나만(2026-11-01 디징 첫 게시: 같은 날 만든 다른 카드가 올라가지 않게)
@@ -72,7 +73,7 @@ def fetch_unpublished(card_id: int | None = None) -> list[dict]:
 
 
 def fetch_regenerate_requests() -> list[dict]:
-    return (get_client().table("cards").select("id,news_item_id,category,final_title,image_path")
+    return (get_client().table("cards").select("id,news_item_id,category,final_title,image_path,revision_request")
             .eq("published", False).eq("approval", "regenerate").in_("category", list(config.CATEGORIES))
             .order("id").execute().data or [])
 
@@ -309,6 +310,10 @@ def main(argv: list[str] | None = None):
             events.record("publish", "failed", category=item["category"], card_id=item["id"], message="카드 이미지 없음")
             continue
 
+        from publish_guard import claim_card
+        if not claim_card(client, item["id"], requires_approval()):
+            log.warning("card %s already claimed; skipping", item["id"])
+            continue
         events.record(
             "publish", "started", category=item["category"], card_id=item["id"], count=len(pngs),
             message=f"캐러셀 {len(pngs)}장 업로드 시작" + (f" · 공동 작업자 {', '.join(collaborators)}" if collaborators else ""),
@@ -324,9 +329,12 @@ def main(argv: list[str] | None = None):
                 f"⚠️ 인스타그램 업로드 실패\n{item['final_title']}\n{e}"
             )
             continue
+        receipt = {"card_id": item["id"], "media_id": str(media_id), "run_id": events.RUN_ID,
+                   "created_at": datetime.now(timezone.utc).isoformat()}
+        (out_dir / "publish-receipt.json").write_text(json.dumps(receipt), encoding="utf-8")
         posted += 1
 
-        client.table("cards").update({"published": True, "media_id": str(media_id),
+        client.table("cards").update({"published": True, "publish_status": "published", "media_id": str(media_id),
                                       "published_at": datetime.now(timezone.utc).isoformat()}).eq("id", item["id"]).execute()
         log.info("[%s] 캐러셀 업로드 완료(%d장) media_id=%s", item["category"], len(pngs), media_id)
         events.record(

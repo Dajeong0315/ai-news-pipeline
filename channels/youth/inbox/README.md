@@ -7,7 +7,7 @@
 
 | 출처 | 방식 | 카테고리 |
 |-|-|-|
-| 위비티·링커리어 등 대외활동·공모전 사이트 | Aside 아침 루틴(매일 07:00 KST, 브라우저) → `aside-YYYY-MM-DD.json` | youth_activity |
+| 위비티·링커리어 등 대외활동·공모전 사이트 | 새 PC Aside 아침 루틴(매일 07:00 KST, 브라우저) → `aside-YYYY-MM-DD.json` | youth_activity |
 | 온통청년 청년정책 | 파이프라인 API 수집(`https://www.youthcenter.go.kr/go/ythip/getPlcy?apiKeyNm=...&rtnType=json`, 키는 youth/.env `YOUTHCENTER_API_KEY`, 2027-07-28까지). Aside 루틴은 보지 않음 | youth_support |
 | K-Startup 창업 지원사업 공고 | 파이프라인 API 수집(공공데이터포털 승인됨, 같은 `DATA_GO_KR_SERVICE_KEY`) | youth_support |
 | 잡알리오 공공기관 채용(청년인턴·신입) | 파이프라인 API 수집(공공데이터포털 `apis.data.go.kr/1051000/recruitment/list`, 키는 youth/.env `DATA_GO_KR_SERVICE_KEY`) | youth_job |

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- cheatsheet (묘한 경제, 2026-11-01 주간 리서치): 저장해 두고 보는 "한 장 정리 노트".
+     모눈 크림 종이 + 위 머리띠(워드마크·시리즈) + 아주 굵은 남색 제목(마지막 줄만 빨강) + 베이지 알약 부제 + 남색 테두리 사진 칸.
+     속지는 번호 원(❶ 같은 빨간 동그라미)이 붙은 정리 칸: point는 칸 하나 + 작은 사진 띠, list는 2열 번호 타일,
+     compare는 남색/빨강 머리띠 두 칸 + 가운데 VS, stat는 큰 빨간 숫자 칸, closing은 형광펜 결론 줄.
+     마스코트 있음: 사진 칸·정리 칸 모서리에 고양이 스티커. :plain은 그 자리에 빨간 원형 "한 장 정리" 도장과 반짝이.
+     참고(구성만): economy.notes·mind_happyvirus의 번호 그리드 한 장 요약, social_in_one의 "기존 vs 새 제도" 두 칸 비교와 차이 배지. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="../_shared/base.css">
+<style>
+  :root { --paper: #F7F1E3; --card: #FFFDF8; --navy: #1F2A44; --red: #E0473A; --beige: #EBDDBF; --hl: #FFE07A; --soft: #6B6F7B; --grid: rgba(31,42,68,.055); }
+  .slide { color: var(--navy); font-family: "Pretendard", sans-serif; background-color: var(--paper);
+           background-image: repeating-linear-gradient(0deg, var(--grid) 0 2px, transparent 2px 54px),
+                             repeating-linear-gradient(90deg, var(--grid) 0 2px, transparent 2px 54px); }
+  .slide .bg, .slide .shade { display: none; }
+  .photo { background-size: cover; background-position: center; filter: saturate(.9) contrast(1.02); }
+
+  /* 머리띠: 워드마크 + 시리즈 */
+  .deco .top { left: 64px; right: 64px; top: 46px; height: 64px; display: flex; align-items: center; justify-content: space-between; border-bottom: 4px solid var(--navy); }
+  .top .wm { display: flex; align-items: center; gap: 14px; font-size: 30px; font-weight: 900; letter-spacing: -.02em; }
+  .top .wm i { width: 30px; height: 36px; border-radius: 4px; background: var(--navy); position: relative; }
+  .top .wm i::after { content: ""; position: absolute; left: 7px; right: 7px; top: 9px; height: 3px; background: var(--paper); box-shadow: 0 8px 0 var(--paper); }
+  .top .sr { font-size: 25px; font-weight: 600; color: var(--soft); letter-spacing: -.01em; }
+  .foot { left: 64px; right: 64px; bottom: 38px; font-size: 26px; font-weight: 700; color: var(--navy); }
+  .foot .page { font-weight: 600; color: var(--soft); letter-spacing: .08em; }
+
+  .num { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 64px; height: 64px; border-radius: 50%; background: var(--red); color: #fff; font-size: 36px; font-weight: 900; }
+  .title .acc { color: var(--red); }
+  .content { left: 64px; right: 64px; top: 150px; }
+
+  /* 표지 */
+  .k-cover .content { text-align: center; top: 168px; }
+  .k-cover .kicker { display: inline-block; background: var(--navy); color: #fff; font-size: 34px; font-weight: 800; padding: 10px 24px 12px; border-radius: 8px; margin-bottom: 28px; }
+  .k-cover .title { font-size: 120px; line-height: 1.14; font-weight: 900; letter-spacing: -.055em; }
+  .k-cover .subtitle { display: inline-block; margin-top: 30px; background: var(--beige); border-radius: 999px; padding: 14px 34px 16px; font-size: 36px; font-weight: 700; }
+  .deco .frame { left: 64px; right: 64px; top: 720px; bottom: 104px; border: 6px solid var(--navy); border-radius: 30px; overflow: hidden; background: var(--card); }
+  .deco .frame .photo { position: absolute; inset: 0; }
+  .deco .chips { left: 92px; top: 748px; display: flex; gap: 12px; }
+  .chips span { width: 58px; height: 58px; border-radius: 50%; background: var(--red); color: #fff; font-size: 30px; font-weight: 900; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 5px var(--card); }
+  .chips span + span { background: var(--navy); }
+  .deco .mascot { width: 320px; right: 38px; bottom: 70px; }
+  .deco .stamp { right: 70px; bottom: 132px; width: 220px; height: 220px; border-radius: 50%; background: var(--red); color: #fff; transform: rotate(-10deg);
+                 display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-size: 38px; font-weight: 900; line-height: 1.15;
+                 box-shadow: 0 0 0 8px var(--card), 0 0 0 14px var(--red); }
+  .stamp small { font-size: 22px; font-weight: 700; opacity: .9; margin-top: 6px; letter-spacing: .06em; }
+  .deco .spark { color: var(--red); }
+  .deco .s1 { width: 64px; left: 96px; bottom: 150px; }
+  .deco .s2 { width: 40px; left: 176px; bottom: 210px; color: var(--navy); }
+
+  /* 속지 공통 */
+  .slide:not(.k-cover) .content { top: 156px; bottom: 112px; display: flex; flex-direction: column; justify-content: center; }
+  h2.title { font-size: 86px; line-height: 1.16; font-weight: 900; letter-spacing: -.05em; }
+  .card { background: var(--card); border: 4px solid var(--navy); border-radius: 26px; padding: 44px 46px; box-shadow: 10px 10px 0 rgba(31,42,68,.12); }
+  .ph-strip { margin-top: 34px; height: 250px; border-radius: 18px; }
+  .khead { display: flex; align-items: center; gap: 18px; margin-bottom: 26px; }
+  .khead .k { font-size: 40px; font-weight: 900; color: var(--red); letter-spacing: -.03em; }
+  .body { margin-top: 26px; font-size: 42px; line-height: 1.6; font-weight: 500; color: #2a3350; }
+  .tiles { margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .tiles li { background: var(--card); border: 4px solid var(--navy); border-radius: 22px; padding: 30px 30px 34px; display: flex; flex-direction: column; gap: 20px;
+              font-size: 40px; font-weight: 700; line-height: 1.38; letter-spacing: -.03em; }
+  .tiles li.wide { grid-column: span 2; flex-direction: row; align-items: center; gap: 24px; }
+  .vs { margin-top: 40px; display: flex; align-items: stretch; gap: 0; position: relative; }
+  .vs .col { flex: 1; min-width: 0; background: var(--card); border: 4px solid var(--navy); border-radius: 24px; }
+  .vs .col + .col { margin-left: 40px; }
+  .vs .col > span { display: block; background: var(--navy); color: #fff; font-size: 36px; font-weight: 800; padding: 20px 26px; text-align: center; border-radius: 19px 19px 0 0; }
+  .vs .col.r { border-color: var(--red); } .vs .col.r > span { background: var(--red); }
+  .vs .col b { display: block; padding: 40px 18px 46px; text-align: center; font-weight: 900; letter-spacing: -.04em; line-height: 1.05; }
+  .vs .col.r b { color: var(--red); }
+  .vs i { position: absolute; left: 50%; top: 50%; width: 84px; height: 84px; margin: -18px 0 0 -42px; border-radius: 50%; background: var(--paper); border: 4px solid var(--navy);
+          display: flex; align-items: center; justify-content: center; font-style: normal; font-size: 30px; font-weight: 900; z-index: 1; }
+  .concl { margin-top: 34px; font-size: 40px; font-weight: 700; line-height: 1.5; }
+  .concl span { background: linear-gradient(transparent 55%, var(--hl) 55%); }
+  .bigcard { text-align: center; padding: 0 0 50px; }
+  .bigcard .band { background: var(--navy); color: #fff; font-size: 34px; font-weight: 800; padding: 22px; margin-bottom: 40px; border-radius: 21px 21px 0 0; }
+  .bigcard .value { color: var(--red); font-size: 230px; font-weight: 900; letter-spacing: -.06em; line-height: 1; padding: 0 30px; }
+  .bigcard .label { margin-top: 26px; font-size: 52px; font-weight: 800; line-height: 1.35; padding: 0 40px; letter-spacing: -.03em; }
+  .bigcard .note { margin-top: 18px; font-size: 34px; color: var(--soft); font-weight: 600; padding: 0 40px; }
+  .qmark { font-size: 150px; line-height: .6; color: var(--red); font-weight: 900; height: 70px; }
+  .quote { margin-top: 30px; font-size: 80px; line-height: 1.32; font-weight: 900; letter-spacing: -.04em; }
+  .quote span { background: linear-gradient(transparent 58%, var(--hl) 58%); }
+  .source { margin-top: 30px; font-size: 34px; font-weight: 600; color: var(--soft); }
+  .cl-bar { display: inline-flex; align-items: center; gap: 16px; background: var(--navy); color: #fff; border-radius: 999px; padding: 12px 30px 12px 14px; font-size: 34px; font-weight: 800; align-self: flex-start; margin-bottom: 30px; }
+  .cl-bar i { width: 50px; height: 50px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; }
+  .cl-bar i svg { width: 30px; height: 30px; }
+  .k-closing h2.title span:last-child { background: linear-gradient(transparent 60%, var(--hl) 60%); }
+
+  /* 속지 마스코트: 오른쪽 아래 모서리 */
+  .deco .mascot { z-index: 2; }
+  .slide:not(.k-cover) .deco .mascot { width: 210px; right: 26px; bottom: 28px; }
+  .slide:not(.k-cover).has-mascot .content { bottom: 200px; }
+  .slide:not(.k-cover).has-mascot .foot .page { margin-right: 220px; }
+</style></head>
+<body><div id="deck"></div>
+<script>
+(() => {
+  const CHECK = `<svg viewBox="0 0 30 30" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16l6 6 12-14"/></svg>`;
+  // 제목: 두 줄 이상이면 마지막 줄만 빨강(레퍼런스의 "키워드 한 줄 강조")
+  const title = (ctx, t) => String(t || "").split("\n")
+    .map((l, i, a) => `<span class="${a.length > 1 && i === a.length - 1 ? "acc" : ""}">${ctx.esc(l)}</span>`).join("<br>");
+  const vsSize = (v) => { const n = String(v || "").length; return n <= 4 ? 112 : n <= 6 ? 92 : n <= 9 ? 68 : 52; };
+  window.TEMPLATE = {
+    deco(slide, ctx) {
+      const b = ctx.brand;
+      const top = `<div class="top"><span class="wm"><i></i>${ctx.esc(b.wordmark || b.name || "")}</span><span class="sr">${ctx.esc(b.series || "")}</span></div>`;
+      const mascot = ctx.mascot ? `<img class="mascot sticker-img" src="${ctx.esc(ctx.mascot)}">` : "";
+      if (slide.kind !== "cover") return top + mascot;
+      const img = `background-image:url('${ctx.esc(ctx.job.background)}')`;
+      const label = ctx.props.label || "한 장 정리";
+      return top + `<div class="frame"><div class="photo" style="${img}"></div></div>` +
+        `<div class="chips"><span>1</span><span>2</span><span>3</span></div>` +
+        (mascot || `<div class="stamp">${ctx.esc(label)}<small>SAVE</small></div><span class="spark s1">${ctx.doodles.sparkle}</span><span class="spark s2">${ctx.doodles.sparkle}</span>`);
+    },
+    content(slide, ctx, base) {
+      const h2 = slide.title ? `<h2 class="title">${title(ctx, slide.title)}</h2>` : "";
+      const img = `background-image:url('${ctx.esc(ctx.job.background)}')`;
+      const n = ctx.i - 1;
+      switch (slide.kind) {
+        case "cover":
+          return (slide.kicker ? `<p class="kicker">${ctx.text(slide.kicker)}</p>` : "") +
+            `<h1 class="title">${title(ctx, slide.title)}</h1>` + (slide.subtitle ? `<p class="subtitle">${ctx.text(slide.subtitle)}</p>` : "");
+        case "point":
+          return `<div class="card"><div class="khead"><span class="num">${n}</span><span class="k">${ctx.esc(slide.kicker || ctx.brand.series || "")}</span></div>` +
+            `<div>${h2}</div>` + `<p class="body">${ctx.text(slide.body)}</p><div class="photo ph-strip" style="${img}"></div></div>`;
+        case "list": {
+          const items = slide.items || [];
+          return h2 + `<ol class="tiles">${items.map((it, k) =>
+            `<li class="${items.length % 2 && k === items.length - 1 ? "wide" : ""}"><span class="num">${k + 1}</span><span>${ctx.text(it)}</span></li>`).join("")}</ol>`;
+        }
+        case "compare": {
+          const it = (slide.items || []).slice(0, 2);
+          return h2 + `<div class="vs">${it.map((x, k) => `<div class="col ${k ? "r" : ""}"><span>${ctx.text(x.label)}</span><b style="font-size:${vsSize(x.value)}px">${ctx.text(x.value)}</b></div>`).join("")}` +
+            (it.length > 1 ? `<i>VS</i>` : "") + `</div>` + (slide.note ? `<p class="concl"><span>${ctx.text(slide.note)}</span></p>` : "");
+        }
+        case "stat":
+          return `<div class="card bigcard"><div class="band">${ctx.esc(slide.kicker || ctx.brand.series || "숫자 하나")}</div>` +
+            `<p class="value">${ctx.text(slide.value)}</p><p class="label">${ctx.text(slide.label)}</p>` + (slide.note ? `<p class="note">${ctx.text(slide.note)}</p>` : "") + `</div>`;
+        case "quote":
+          return `<div class="qmark">“</div><blockquote class="quote"><span>${ctx.text(slide.quote)}</span></blockquote>` + (slide.source ? `<p class="source">${ctx.text(slide.source)}</p>` : "");
+        case "closing":
+          return `<span class="cl-bar"><i>${CHECK}</i>${ctx.esc(slide.kicker || "한 줄 결론")}</span>` + h2 +
+            (slide.body ? `<p class="body">${ctx.text(slide.body)}</p>` : "");
+      }
+      return base(slide);
+    },
+    foot(slide, ctx) {
+      return `<footer class="foot"><span class="handle">${ctx.esc(ctx.brand.handle || "")}</span><span class="page">${String(ctx.i).padStart(2, "0")} / ${String(ctx.n).padStart(2, "0")}</span></footer>`;
+    },
+  };
+})();
+</script>
+<script src="../_shared/engine.js"></script>
+</body></html>
