@@ -1,0 +1,15 @@
+id: 2026-11-example-weekend-bag
+content_type: personal_experience
+publishable: false
+topic: "주말 여행 가방 정리"
+experience_facts:
+  - "사용자가 직접 적은 사실만 넣는다."
+  - "날짜, 장소, 사용 기간처럼 기억이 확실한 정보만 넣는다."
+avoid_claims:
+  - "사용하지 않은 제품을 사용했다고 쓰지 않는다."
+  - "건강·금융·법률 효과를 단정하지 않는다."
+photo_asset_ids:
+  - personal-202611-example-01
+voice: "친한 2030 여성에게 정리 팁을 공유하는 차분한 말투"
+required_disclosures: []
+operator_notes: "사진과 경험이 준비된 뒤 publishable을 true로 변경한다."
