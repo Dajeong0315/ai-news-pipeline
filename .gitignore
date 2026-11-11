@@ -10,6 +10,15 @@ __pycache__/
 venv/
 output/*
 !output/samples/
+blog/assets/personal/*
+!blog/assets/personal/README.md
+blog/briefs/*
+!blog/briefs/experience-brief.example.yaml
+blog/.env
+blog/drafts/*
+!blog/drafts/.gitkeep
+blog/reviews/*
+!blog/reviews/.gitkeep
 logs/
 *.log
 # 릴스 배경 음원(저작권 무료라도 재배포 조건이 있어 공개 저장소에 올리지 않음)
