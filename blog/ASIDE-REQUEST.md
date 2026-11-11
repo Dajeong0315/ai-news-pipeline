@@ -1,5 +1,7 @@
 # Aside 요청서: 블로그 초안 보조
 
+> **대체됨 (2026-11-11):** Aside 독립 루틴을 만들지 않는다. Claude가 Notion `승인 완료` 상태를 확인한 뒤 `aside exec`로 호출하는 현재 운영 절차를 따른다. 현재 기준 프롬프트와 금지 사항은 [NOTION-OPERATING-HUB.md](NOTION-OPERATING-HUB.md)를 따른다.
+
 Aside에 아래 요청을 전달한다. 이 루틴은 처음에는 비활성 또는 수동 테스트 모드로만 저장한다.
 
 ```text
