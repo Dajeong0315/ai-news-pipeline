@@ -1,0 +1,27 @@
+{
+  "id": "blog-2026-11-example",
+  "status": "brief_required",
+  "content_type": "personal_experience",
+  "topic_source": {
+    "provider": "naver_trend",
+    "gender": "f",
+    "ages": ["3", "4", "5", "6"],
+    "device": "mo"
+  },
+  "assets": [],
+  "claims": [],
+  "affiliate": {
+    "enabled": false,
+    "disclosure_inserted": false,
+    "links": []
+  },
+  "review": {
+    "experience_evidence_ok": false,
+    "photo_rights_ok": false,
+    "factual_claims_ok": false,
+    "affiliate_disclosure_ok": false,
+    "affiliate_links_verified": false,
+    "operator_approved": false
+  },
+  "ready_to_publish": false
+}
