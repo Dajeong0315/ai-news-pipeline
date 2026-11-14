@@ -64,13 +64,38 @@ def run_auto_phase() -> None:
     keyword_stats.snapshot()
 
 
-PHASES = {"collect": run_collect_phase, "publish": run_publish_phase, "cards": run_cards_phase, "auto": run_auto_phase}
+def run_nextday_phase() -> None:
+    """전날 제작(Phase 5, 17:30): 다음 날 게시 시각마다 1개 + 예비분을 만들어 승인 요청까지. 게시는 10분 작업이 예정 시각에.
+    channel.json nextday가 꺼져 있으면 아무것도 안 한다(시험 채널만 켬)."""
+    import schedule_plan
+    from datetime import datetime, timedelta
+    if not schedule_plan.enabled():
+        print(f"[run_daily] {config.CHANNEL} 채널은 nextday가 꺼져 있어 전날 제작을 건너뜀")
+        events.record("run", "skipped", message="nextday 꺼짐(전날 제작 안 함)")
+        return
+    tomorrow = (datetime.now(schedule_plan.KST) + timedelta(days=1)).date()
+    plan = schedule_plan.plan_for(tomorrow)
+    print(f"[run_daily] {tomorrow} 채울 자리 {len(plan)}개: " + ", ".join(schedule_plan.label(p) for p in plan))
+    check_deleted_media()
+    if config.CHANNEL_CONFIG.get("source") == "listings":
+        collect_listings.main()
+    else:
+        collect_news.main()
+        clean_news.main()
+    auto_select.main(limit=len(plan))
+    generate_cardset.main(plan=plan)
+    check_usage.main()
+    keyword_stats.snapshot()
+
+
+PHASES = {"collect": run_collect_phase, "publish": run_publish_phase, "cards": run_cards_phase, "auto": run_auto_phase,
+          "nextday": run_nextday_phase}
 
 
 def main() -> None:
     phase = sys.argv[1] if len(sys.argv) > 1 else "auto"
     if phase not in PHASES:
-        print("사용법: python run_daily.py [collect|publish|cards|auto]")
+        print("사용법: python run_daily.py [collect|publish|cards|auto|nextday]")
         sys.exit(1)
 
     events.record("run", "started", message=f"{phase} 모드 시작", detail={"mode": phase, "trigger": events.TRIGGER})

@@ -724,7 +724,23 @@ def card_action(card_id: int, action: str, by: str, chat_id: int | None = None) 
                                     "news_item_id": card.get("news_item_id"), "message": f"{label.split(' · ')[0]} ({by})"})
     except Exception:
         pass
+    if action == "approve":
+        label = _scheduled_approve_label(card_id) or label
     return True, label
+
+
+def _scheduled_approve_label(card_id: int) -> str | None:
+    """전날 제작 카드(2026-11-14 Phase 5)는 승인해도 바로 안 올라가므로 언제 올라가는지 알려준다."""
+    try:
+        row = sb_get("cards", {"select": "scheduled_for,reserve", "id": f"eq.{card_id}"})[0]
+    except Exception:  # 새 칸(sql/2026-11-14-nextday-schedule.sql)이 아직 없으면 옛 문구
+        return None
+    if row.get("reserve"):
+        return "✅ 예비분 승인 · 게시 시각 카드가 승인 안 됐거나 반려면 대신 올라가요"
+    if row.get("scheduled_for"):
+        when = datetime.fromisoformat(row["scheduled_for"].replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=9)))
+        return f"✅ 게시 승인 · {when:%m/%d} {when:%H:%M}에 올라가요"
+    return None
 
 
 def _sender_name(sender: dict) -> str:

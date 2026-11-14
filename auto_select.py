@@ -438,8 +438,9 @@ def choose_listings(candidates: list[dict], limit: int, today: date) -> list[int
     return [i for i in json.loads(raw).get("ids", []) if i in candidate_ids][:limit]
 
 
-def select_listings(limit: int) -> list[dict]:
-    today = datetime.now(KST).date()
+def select_listings(limit: int, today: date | None = None) -> list[dict]:
+    """today: 기준일(전날 제작은 내일 = 게시하는 날 기준으로 마감 3일 이상·접수 중)."""
+    today = today or datetime.now(KST).date()
     pending = approved_listings_without_card(today)  # 전에 카드로 못 만든 선정분이 있으면 그만큼 덜 고른다
     limit = max(0, limit - len(pending))
     candidates = listing_candidates(today) if limit else []
@@ -483,8 +484,17 @@ def listing_run_limit(daily: int) -> int:
     return max(0, min(int(per_run), daily - made))
 
 
-def main() -> None:
+def main(limit: int | None = None) -> None:
+    """limit(전날 제작, run_daily nextday): 다음 날 빈 자리 수만큼 고른다(카드 대기 중인 선정분은 select_listings가 뺀다)."""
     daily_posts = config.CHANNEL_CONFIG.get("daily_posts")
+    if limit is not None:
+        if limit <= 0:
+            events.record("select", "skipped", count=0, message="내일 자리·예비분이 이미 다 차 있음")
+        elif LISTINGS:
+            select_listings(limit, today=datetime.now(KST).date() + timedelta(days=1))
+        else:
+            select_daily(limit)
+        return
     if LISTINGS:
         select_listings(listing_run_limit(daily_posts or 2))
         return

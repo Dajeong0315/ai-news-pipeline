@@ -31,6 +31,7 @@ import comment_dm
 import config
 import events
 import instagram_client
+import schedule_plan
 import share_to_story
 import story_queue
 import telegram_client
@@ -57,9 +58,12 @@ def fetch_unpublished(card_id: int | None = None) -> list[dict]:
     client = get_client()
     today_start = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0)
     since = today_start - timedelta(days=APPROVED_MAX_DAYS - 1) if requires_approval() else today_start
+    cols = "id,news_item_id,category,final_title,image_path,publish_order"
+    if schedule_plan.enabled():  # 전날 제작 채널만 새 칸을 읽는다(SQL 2026-11-14-nextday-schedule 필요)
+        cols += ",scheduled_for,reserve,created_at"
     query = (
         client.table("cards")
-        .select("id,news_item_id,category,final_title,image_path,publish_order")
+        .select(cols)
         .eq("published", False)
         .in_("category", list(config.CATEGORIES))
         .gte("created_at", since.astimezone(timezone.utc).isoformat())
@@ -69,11 +73,17 @@ def fetch_unpublished(card_id: int | None = None) -> list[dict]:
         query = query.eq("approval", "approved")
     if card_id is not None:  # 운영자가 검토한 카드 하나만(2026-11-01 디징 첫 게시: 같은 날 만든 다른 카드가 올라가지 않게)
         query = query.eq("id", card_id)
-    return query.order("publish_order").execute().data or []
+    rows = query.order("publish_order").execute().data or []
+    if schedule_plan.enabled() and card_id is None:  # 예정 시각 전 카드는 어떤 경로로도 미리 올라가지 않게
+        rows = [r for r in rows if not schedule_plan.not_due(r)]
+    return rows
 
 
 def fetch_regenerate_requests() -> list[dict]:
-    return (get_client().table("cards").select("id,news_item_id,category,final_title,image_path,revision_request")
+    cols = "id,news_item_id,category,final_title,image_path,revision_request"
+    if schedule_plan.enabled():  # 다시 만든 카드가 게시 예정 시각·예비분 표시를 이어받게
+        cols += ",scheduled_for,reserve"
+    return (get_client().table("cards").select(cols)
             .eq("published", False).eq("approval", "regenerate").in_("category", list(config.CATEGORIES))
             .order("id").execute().data or [])
 
@@ -162,6 +172,29 @@ def rebuild_reel(out_dir: Path) -> bool:
         return False
 
 
+def already_posted_reason(item: dict, news: dict | None) -> str | None:
+    """전날 제작 카드는 만든 뒤 하루 이상 기다리므로, 그 사이 같은 공고·같은 주제가 올라갔는지 게시 직전에 다시 본다(최근 7일 게시분)."""
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    rows = (get_client().table("cards").select("id,news_item_id").eq("published", True)
+            .in_("category", list(config.CATEGORIES)).gte("published_at", since).neq("id", item["id"]).execute().data or [])
+    ids = [r["news_item_id"] for r in rows if r.get("news_item_id")]
+    if item.get("news_item_id") in ids:
+        return "같은 공고·기사를 이미 게시함"
+    if not news or not ids:
+        return None
+    history = get_client().table("news_items").select("id,title,url").in_("id", ids).execute().data or []
+    if news.get("source_type") == "listing":  # 공고는 기관만 다른 비슷한 제목이 많아 URL과 높은 유사도만 본다
+        from rapidfuzz import fuzz
+        for prev in history:
+            if news.get("url") and news["url"] == prev.get("url"):
+                return f"같은 공고 URL(이전: {prev['title'][:30]})"
+            if fuzz.token_sort_ratio(news.get("title") or "", prev["title"]) >= 90:
+                return f"거의 같은 공고 제목(이전: {prev['title'][:30]})"
+        return None
+    import auto_select
+    return auto_select.duplicate_reason({"id": news.get("id"), "title": news.get("title") or "", "url": news.get("url")}, history)
+
+
 def prepare(item: dict, dry_run: bool = False) -> dict | None:
     """게시 직전 준비: 마감 확인, 캡션 D-n 다시 계산(+릴스), 댓글 자료 안내 줄, 공동 작업자. 못 올리면 None."""
     out_dir = Path(item["image_path"])
@@ -169,6 +202,14 @@ def prepare(item: dict, dry_run: bool = False) -> dict | None:
     caption = caption_path.read_text(encoding="utf-8") if caption_path.exists() else item["final_title"]
     news = news_for(item)
     plan = {"out_dir": out_dir, "pngs": sorted(out_dir.glob("[0-9][0-9].png")), "news": news, "notes": []}
+    if schedule_plan.enabled() and (dup := already_posted_reason(item, news)):
+        reason = f"{dup}이라 게시하지 않음"
+        if dry_run:
+            return {**plan, "notes": [reason], "caption": caption, "collaborators": []}
+        get_client().table("cards").update({"approval": "rejected", "approved_by": "system:duplicate"}).eq("id", item["id"]).execute()
+        events.record("publish", "skipped", category=item["category"], card_id=item["id"], message=reason)
+        telegram_client.send_message(f"⏭ 승인했지만 {reason}\n{item['final_title']}")
+        return None
     if news and news.get("apply_end"):
         left = (datetime.fromisoformat(news["apply_end"]).date() - datetime.now(KST).date()).days
         if left < LISTING_MIN_DAYS_LEFT:
@@ -238,6 +279,9 @@ def print_dry_run(card_id: int | None, approved_only: bool) -> None:
             print(f"  card {card['id']} · news_item {card['news_item_id']} · {card['final_title']}")
     items = fetch_unpublished(card_id)
     print(f"게시 대상 {len(items)}건 (채널 {config.CHANNEL}{', 승인된 카드만' if requires_approval() else ''})")
+    if items and approved_only and card_id is None and schedule_plan.enabled():
+        items, reason = schedule_plan.choose(items)
+        print(f"전날 제작: 이번 게시 시각 후보 {[i['id'] for i in items]}{f' ({reason})' if reason else ''}")
     for item in items:
         print(f"  card {item['id']} · news_item {item['news_item_id']} · {item['category']} · {item['image_path']} · {item['final_title']}")
         plan = prepare(item, dry_run=True)
@@ -262,6 +306,8 @@ def main(argv: list[str] | None = None):
         log.warning("INSTAGRAM_ACCESS_TOKEN / INSTAGRAM_BUSINESS_ACCOUNT_ID 미설정, 건너뜀")
         events.record("publish", "skipped", message="인스타그램 토큰/계정 ID 미설정")
         return
+    # 10분마다 도는 발행 작업에서 댓글 DM(리틀리) 미설정 게시물을 확인해 항목당 한 번 알린다
+    comment_dm.alert_pending(telegram_client.send_message)
 
     try:
         instagram_client.verify_token()
@@ -282,6 +328,14 @@ def main(argv: list[str] | None = None):
     client = get_client()
     items = fetch_unpublished(card_id)
     log.info("업로드 대상: %d건%s", len(items), f" (card {card_id}만)" if card_id is not None else "")
+    if items and approved_only and card_id is None and schedule_plan.enabled():
+        # 전날 제작: 게시 시각마다 1개. 그 시각 카드 → 늦게 승인된 앞 시각 카드 → 예비분 순서
+        items, reason = schedule_plan.choose(items)
+        if not items:
+            log.info("게시 건너뜀(전날 제작): %s", reason)
+            return
+        log.info("이번 게시 시각 후보: %s", ", ".join(
+            f"card {i['id']}" + ("(예비분)" if i.get("reserve") else "") for i in items))
     if not items:
         if not approved_only:  # 10분 작업은 대부분 빈 실행이라 기록하지 않는다(대시보드 타임라인이 덮이지 않게)
             events.record("publish", "skipped", count=0, message="게시할 카드세트 없음")

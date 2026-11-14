@@ -29,6 +29,7 @@ import config
 import events
 import llm_client
 import reel
+import schedule_plan
 import slide_writer
 from card_templates import images as template_images
 from card_templates.make_job import build_job, split_variant
@@ -377,8 +378,10 @@ def designer_pass(item: dict, deck: dict, render_output: str, article_text: str,
     return final
 
 
-def save_card(item: dict, result: dict, publish_order: int, regenerated_from: int | None = None, note: str = "") -> dict:
-    """cards 행을 넣고 미리보기 이미지를 Storage에 올린다. 승인이 필요한 채널(디징)은 pending으로 넣고 텔레그램 승인 요청을 보낸다."""
+def save_card(item: dict, result: dict, publish_order: int, regenerated_from: int | None = None, note: str = "",
+              schedule: dict | None = None) -> dict:
+    """cards 행을 넣고 미리보기 이미지를 Storage에 올린다. 승인이 필요한 채널(디징)은 pending으로 넣고 텔레그램 승인 요청을 보낸다.
+    schedule(전날 제작): {"scheduled_for": 게시 예정 시각, "reserve": 예비분 여부} → 행에 저장하고 미리보기에 표시."""
     client = get_client()
     pngs = sorted(result["out_dir"].glob("[0-9][0-9].png"))
     row = {
@@ -393,6 +396,10 @@ def save_card(item: dict, result: dict, publish_order: int, regenerated_from: in
         row["approval"] = "pending"
     if regenerated_from:
         row["regenerated_from"] = regenerated_from
+    if schedule:
+        row["scheduled_for"] = schedule.get("scheduled_for")
+        row["reserve"] = bool(schedule.get("reserve"))
+        note = " · ".join(x for x in (schedule_plan.label(schedule), note) if x)
     card = client.table("cards").insert(row).execute().data[0]
     log.info("[%s] 카드세트 생성 완료: %s (%d장)", item["category"], result["out_dir"], len(pngs))
 
@@ -430,14 +437,18 @@ def attempts_today() -> int:
                and (r.get("detail") or {}).get("stage") not in ("designer_review", "regenerate"))  # 검수·다시 만들기는 순위 시도가 아니다
 
 
-def main():
+def main(plan: list[dict] | None = None):
+    """plan(전날 제작, run_daily nextday): schedule_plan.plan_for가 준 빈 자리 목록. 만든 카드에 순서대로 붙이고 다 채우면 멈춘다."""
     client = get_client()
     items = fetch_approved_without_cardset()
-    log.info("카드세트 생성 대상: %d건", len(items))
+    log.info("카드세트 생성 대상: %d건%s", len(items), f" (채울 자리 {len(plan)}개)" if plan is not None else "")
+    if plan is not None and not plan:
+        return
 
     publish_order = (client.table("cards").select("id", count="exact").execute().count or 0) + 1
     # 12:00·19:00에 하나씩 만드는 채널(cards_per_run)은 두 번째 카드가 다른 템플릿이 되게 오늘 만든 수부터 센다
-    slot = made_today() if config.CHANNEL_CONFIG.get("cards_per_run") else 0
+    slot = made_today() if config.CHANNEL_CONFIG.get("cards_per_run") and plan is None else 0
+    plan = list(plan) if plan is not None else None
 
     # 같은 실행 안에서 만든 카드끼리도 중복 검사(기사는 최근 7일 카드 + 이번 실행분, 공고는 선정 단계에서 이미 거름)
     history = auto_select.recent_posted_items() if not auto_select.LISTINGS else None
@@ -463,8 +474,10 @@ def main():
             continue
         if history is not None:
             history.append(item)
-        save_card(item, result, publish_order)
+        save_card(item, result, publish_order, schedule=plan.pop(0) if plan else None)
         publish_order += 1
+        if plan is not None and not plan:
+            break
 
 
 def regenerate(card: dict) -> dict | None:
@@ -497,7 +510,11 @@ def regenerate(card: dict) -> dict | None:
         _notify(f"card {card['id']} 다시 만들기 실패, 기존 카드로 되돌림(이유는 대시보드 오늘 탭 기록)", card["id"])
         return None
     publish_order = (client.table("cards").select("id", count="exact").execute().count or 0) + 1
-    new = save_card(item, result, publish_order, regenerated_from=card["id"], note=f"다시 만든 카드 {n}/{limit}")
+    # 전날 제작 카드는 게시 예정 시각·예비분 표시를 그대로 이어받는다
+    schedule = ({"scheduled_for": card.get("scheduled_for"), "reserve": card.get("reserve")}
+                if card.get("scheduled_for") or card.get("reserve") else None)
+    new = save_card(item, result, publish_order, regenerated_from=card["id"], note=f"다시 만든 카드 {n}/{limit}",
+                    schedule=schedule)
     client.table("cards").update({"approval": "replaced"}).eq("id", card["id"]).execute()
     return new
 

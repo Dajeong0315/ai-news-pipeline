@@ -171,6 +171,10 @@
   "calc_persona": {"annual_salary": [28000000, 35000000], "monthly_salary": [2300000, 2900000]},
   "banned_phrases": [],
   "daily_posts": 1,
+  "nextday": false,
+  "reserve_cards": 1,
+  "reserve_max_days": 2,
+  "_nextday_comment": "2026-11-14 Phase 5 전날 제작(schedule_plan.py): 17:30 다음 날 publish_times마다 1개 + 예비분 reserve_cards개 생성, 18:30 승인 모아보기, 게시 시각마다 1개(그 시각 카드 미승인·반려면 예비분). reserve_max_days = 예비분·늦게 승인된 카드를 쓸 수 있는 기간(만든 날부터). 디징 1주 시험 후 묘한경제 켬.",
   "publish_times": [
     "07:30"
   ],
@@ -182,11 +186,14 @@
   "image_prompt_suffix": "set in a Korean city street or a Korean indoor space, no Chinese or Japanese signage, no hanja or kana characters anywhere, objects related to the topic in focus, no close-up faces",
   "reels": true,
   "share_post_to_story": false,
+  "story_queue": true,
+  "_story_comment": "2026-11-13 대장 요청으로 켬. 게시 직후 outbox/stories.json에 적고, Dijing-Claude-StoryShare(12:30·19:30)가 Aside home 프로필 Business Suite(묘한 경제 포트폴리오, asset 1256367207562175)에서 스토리로 다시 공유",
   "ig_username": "myohan.economy",
   "comment_dm": {
     "keyword": "자료",
-    "caption_line": "댓글에 '자료' 남기면 계산표 DM으로 보내줄게",
+    "caption_line": "댓글에 '자료' 남겨 주시면 계산표를 DM으로 보내드려요",
     "hub_url": "https://aboard-toy-146.notion.site/40b0bd3313a180879fa4e662c58dd615",
-    "enabled": false
+    "_enabled_comment": "2026-11-13 대장 지시로 켬. 리틀리 묘한경제(myohan.econ@gmail.com, Aside 프로필 전다정 home)에 myohan.economy 연결 확인 후",
+    "enabled": true
   }
 }
