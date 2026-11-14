@@ -128,9 +128,9 @@ class NoCalculation(ValueError):
 # "원문에 없는 숫자" 검사에서 뺀다.
 REQUIRE_CALC = config.CHANNEL_CONFIG.get("require_calc", False)
 CALC_PERSONA = config.CHANNEL_CONFIG.get("calc_persona", {})
-_MULTIPLIER = {"억": 10**8, "천만": 10**7, "백만": 10**6, "만": 10**4, "천": 10**3}
-_WON_RE = re.compile(r"(?:\d[\d,]*(?:\.\d+)?\s*(?:억|천만|백만|만|천)\s*)*\d[\d,]*(?:\.\d+)?\s*(?:억|천만|백만|만|천)?\s*원")
-_WON_PART_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(억|천만|백만|만|천)?")
+_MULTIPLIER = {"조": 10**12, "억": 10**8, "천만": 10**7, "백만": 10**6, "만": 10**4, "천": 10**3}
+_WON_RE = re.compile(r"(?:\d[\d,]*(?:\.\d+)?\s*(?:조|억|천만|백만|만|천)\s*)*\d[\d,]*(?:\.\d+)?\s*(?:조|억|천만|백만|만|천)?\s*원")
+_WON_PART_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(조|억|천만|백만|만|천)?")  # 조: 2026-11-14 "2조 6,428억 원" 인식
 _PERCENT_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(%p|%P|％|%|bp)")
 _CALC_CONSTANTS = {1, 2, 3, 4, 6, 10, 12, 24, 36, 52, 60, 100, 365, 1000}  # 개월·해·백분율 환산에 쓰는 수
 _ROUND_RE = re.compile(r"^[1-9](?:0*|50*)$")  # 예시 금액은 1·5로 시작하는 딱 떨어지는 값(만 원 단위 이상)
@@ -240,7 +240,11 @@ def check_calculations(deck: dict, article: str) -> list[float]:
                         raise ValueError(f"{where}: 가정 {label} {value_text}이 사회초년생 범위({low:,}~{high:,}원) 밖")
                 elif not _ROUND_RE.match(f"{int(value // 10000)}" if value >= 10000 else "x"):
                     raise ValueError(f"{where}: 가정 금액 {value_text}은 딱 떨어지는 예시 금액(100만 원, 1,000만 원처럼)만")
-                if not any(_same(value, won_value(m.group(0))) for m in _WON_RE.finditer(slide_text)):
+                # 원 금액 가정은 카드의 원 금액과, 그 밖의 가정(예: "100만 명")은 카드의 모든 수와 대조(2026-11-14: 명 단위 가정이
+                # 카드에 적혀 있어도 원 금액만 찾아 늘 실패했다)
+                shown_values = ([won_value(m.group(0)) for m in _WON_RE.finditer(slide_text)] if _WON_RE.search(value_text)
+                                else article_values(slide_text))
+                if not any(_same(value, v) for v in shown_values):
                     raise ValueError(f"{where}: 가정 {label} {value_text}을 {slide_no}장에 밝히지 않음(예: \"{label} {value_text} 기준\")")
                 allowed.append(value)
             elif not any(_same(value, v) for v in values):
@@ -825,7 +829,8 @@ def _parse(raw: str) -> dict:
     # 특수 하이픈(‑ U+2011 등)을 보통 "-"로. 11/2 디징 170142: "D‑7"이 "D-7" 검사에 세 번 걸렸다
     raw = raw.translate({0x2010: "-", 0x2011: "-", 0x2012: "-", 0x2013: "-", 0x2212: "-"})
     raw = re.sub(r"^```(?:json)?|```$", "", raw.strip()).strip()
-    return json.loads(raw[raw.index("{"): raw.rindex("}") + 1])
+    # strict=False: 문자열 안 날것 줄바꿈 허용(2026-11-12 경제 "Invalid control character"로 편집 1회 낭비)
+    return json.loads(raw[raw.index("{"): raw.rindex("}") + 1], strict=False)
 
 
 def _raise_if_quota_exhausted(e: Exception) -> None:

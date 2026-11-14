@@ -78,6 +78,9 @@ def run_nextday_phase() -> None:
     tomorrow = (datetime.now(schedule_plan.KST) + timedelta(days=offset)).date()
     plan = schedule_plan.plan_for(tomorrow)
     print(f"[run_daily] {tomorrow} 채울 자리 {len(plan)}개: " + ", ".join(schedule_plan.label(p) for p in plan))
+    if not plan:  # 다 차 있으면 수집·모델 호출 없이 끝(매일 09:10 오늘 채우기 점검은 보통 여기서 끝난다)
+        events.record("run", "skipped", message=f"{tomorrow} 게시 시각·예비분이 이미 다 차 있음")
+        return
     check_deleted_media()
     if config.CHANNEL_CONFIG.get("source") == "listings":
         collect_listings.main()
