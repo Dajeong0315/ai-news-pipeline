@@ -73,7 +73,9 @@ def run_nextday_phase() -> None:
         print(f"[run_daily] {config.CHANNEL} 채널은 nextday가 꺼져 있어 전날 제작을 건너뜀")
         events.record("run", "skipped", message="nextday 꺼짐(전날 제작 안 함)")
         return
-    tomorrow = (datetime.now(schedule_plan.KST) + timedelta(days=1)).date()
+    # `nextday today`: 오늘 남은 게시 시각을 채운다(전날 제작이 한도 소진 등으로 실패했을 때 아침에 1회, 2026-11-14)
+    offset = 0 if (len(sys.argv) > 2 and sys.argv[2] == "today") else 1
+    tomorrow = (datetime.now(schedule_plan.KST) + timedelta(days=offset)).date()
     plan = schedule_plan.plan_for(tomorrow)
     print(f"[run_daily] {tomorrow} 채울 자리 {len(plan)}개: " + ", ".join(schedule_plan.label(p) for p in plan))
     check_deleted_media()

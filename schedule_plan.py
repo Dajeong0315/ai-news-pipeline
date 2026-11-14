@@ -70,7 +70,9 @@ def plan_for(day: date, now: datetime | None = None, cards: list[dict] | None = 
     now = now or datetime.now(KST)
     cards = open_cards(now) if cards is None else cards
     taken = {parse_ts(c["scheduled_for"]).timestamp() for c in cards if c.get("scheduled_for")}
-    need = [{"scheduled_for": t.isoformat(), "reserve": False} for t in slot_times(day) if t.timestamp() not in taken]
+    # 오늘 자리를 채울 때(run_daily nextday today)는 승인받을 시간이 남은 시각(지금+1시간 뒤)만
+    need = [{"scheduled_for": t.isoformat(), "reserve": False} for t in slot_times(day)
+            if t.timestamp() not in taken and t > now + timedelta(hours=1)]
     have = sum(1 for c in cards if c.get("reserve") and fresh(c, now))
     need += [{"scheduled_for": None, "reserve": True}] * max(0, reserve_target() - have)
     return need

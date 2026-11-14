@@ -8,7 +8,7 @@ import sys
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--channel',choices=['economy','youth'],required=True)
-    parser.add_argument('mode',choices=['auto','cards','approved','nextday','digest'])
+    parser.add_argument('mode',choices=['auto','cards','approved','nextday','today','digest'])
     args=parser.parse_args()
     root=Path(__file__).resolve().parent
     log_dir=root/'logs';log_dir.mkdir(exist_ok=True)

@@ -159,7 +159,7 @@
     "공유"
   ],
   "render_strict": true,
-  "nextday": false,
+  "nextday": true,
   "reserve_cards": 1,
   "reserve_max_days": 3,
   "_nextday_comment": "2026-11-14 Phase 5 전날 제작(schedule_plan.py): 17:30 다음 날 publish_times마다 1개 + 예비분 reserve_cards개 생성, 18:30 승인 모아보기, 게시 시각마다 1개(그 시각 카드 미승인·반려면 예비분). reserve_max_days = 예비분·늦게 승인된 카드를 쓸 수 있는 기간(만든 날부터). 디징 1주 시험 후 묘한경제 켬.",

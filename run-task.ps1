@@ -1,6 +1,6 @@
 param(
     [ValidateSet('economy','youth')][string]$Channel,
-    [ValidateSet('auto','cards','approved','nextday','digest')][string]$Mode,
+    [ValidateSet('auto','cards','approved','nextday','today','digest')][string]$Mode,
     [int]$RetryDelaySeconds = 120
 )
 # Keep this file ASCII-only: Windows PowerShell 5.1 reads BOM-less scripts as cp949.
