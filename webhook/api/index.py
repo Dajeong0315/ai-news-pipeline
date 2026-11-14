@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import time
 import urllib.parse
 from datetime import date, datetime, timedelta, timezone
@@ -32,6 +33,8 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+# 대장님 텔레그램 채팅. 답장 없이 보낸 글을 최근 카드 수정 요청으로 받는 건 이 채팅에서만(비어 있으면 그 기능 끔).
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 MAX_BACKLOG_DAYS = int(os.environ.get("MAX_BACKLOG_DAYS", 3))
 
 KST = timezone(timedelta(hours=9))
@@ -79,6 +82,15 @@ def tg_call(method: str, payload: dict) -> dict:
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def tg_try(method: str, payload: dict) -> dict | None:
+    """텔레그램 표시용 호출(버튼 응답·안내 글). 실패해도 웹훅 처리를 멈추지 않는다(2026-11-14)."""
+    try:
+        return tg_call(method, payload)
+    except Exception as e:
+        print(f"[tg_try] {method} 실패: {e}")
+        return None
 
 
 def today_start_utc_iso() -> str:
@@ -691,7 +703,9 @@ def card_action(card_id: int, action: str, by: str, chat_id: int | None = None) 
         return False, "승인 절차가 없는 채널 카드예요."
     if card["published"]:
         return False, "이미 게시된 카드예요."
-    if card["approval"] != "pending":
+    # 수정 요청은 [다시 만들기]를 누른 뒤(아직 새 카드가 나오기 전)에도 받는다(2026-11-14).
+    allowed = ("pending", "regenerate") if action == "request_edit" else ("pending",)
+    if card["approval"] not in allowed:
         return False, f"이미 처리된 카드예요({APPROVAL_LABELS.get(card['approval'], card['approval'])})."
     if action == "regenerate" and card.get("news_item_id"):
         done = sb_get("cards", {"select": "id", "news_item_id": f"eq.{card['news_item_id']}", "regenerated_from": "not.is.null"})
@@ -701,7 +715,7 @@ def card_action(card_id: int, action: str, by: str, chat_id: int | None = None) 
     body = {"approval": state, "approved_at": datetime.now(timezone.utc).isoformat(), "approved_by": by[:100]}
     if action == "request_edit" and chat_id is not None:
         body["approval_chat_id"] = chat_id
-    changed = sb_patch("cards", {"id": f"eq.{card_id}", "approval": "eq.pending", "published": "is.false"}, body)
+    changed = sb_patch("cards", {"id": f"eq.{card_id}", "approval": f"in.({','.join(allowed)})", "published": "is.false"}, body)
     if not changed:
         return False, "방금 다른 곳에서 처리됐어요."
     try:  # 대시보드 타임라인 기록(실패해도 승인은 반영됨)
@@ -713,54 +727,119 @@ def card_action(card_id: int, action: str, by: str, chat_id: int | None = None) 
     return True, label
 
 
+def _sender_name(sender: dict) -> str:
+    return "@" + sender["username"] if sender.get("username") else f"telegram:{sender.get('id')}"
+
+
 def handle_card_callback(callback_query: dict) -> None:
     callback_id = callback_query["id"]
     message = callback_query.get("message", {})
-    sender = callback_query.get("from", {})
-    by = "@" + sender["username"] if sender.get("username") else f"telegram:{sender.get('id')}"
+    by = _sender_name(callback_query.get("from", {}))
     try:
         _, action, card_id = callback_query.get("data", "").split(":", 2)
         card_id = int(card_id)
     except ValueError:
-        tg_call("answerCallbackQuery", {"callback_query_id": callback_id, "text": "잘못된 요청이에요."})
+        tg_try("answerCallbackQuery", {"callback_query_id": callback_id, "text": "잘못된 요청이에요."})
         return
     if action == "noop":
-        tg_call("answerCallbackQuery", {"callback_query_id": callback_id})
+        tg_try("answerCallbackQuery", {"callback_query_id": callback_id})
         return
-    ok, text = card_action(card_id, action, by, chat_id=message.get("chat", {}).get("id"))
-    tg_call("answerCallbackQuery", {"callback_query_id": callback_id, "text": text, "show_alert": not ok})
     chat_id, message_id = message.get("chat", {}).get("id"), message.get("message_id")
+    if action == "cancel_edit":
+        ok, text = cancel_edit(card_id, by)
+        tg_try("answerCallbackQuery", {"callback_query_id": callback_id, "text": text, "show_alert": not ok})
+        if ok and chat_id and message_id:
+            tg_try("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": message_id, "reply_markup": {
+                "inline_keyboard": [[{"text": f"↩️ 수정 요청 취소됨 · {by}", "callback_data": f"card:noop:{card_id}"}]]}})
+        return
+    ok, text = card_action(card_id, action, by, chat_id=chat_id)
+    tg_try("answerCallbackQuery", {"callback_query_id": callback_id, "text": text, "show_alert": not ok})
     if ok and action == "request_edit" and chat_id:
-        tg_call("sendMessage", {"chat_id": chat_id,
+        tg_try("sendMessage", {"chat_id": chat_id,
             "text": f"card {card_id}에서 바꿀 점을 이 대화에 보내줘. 예: 1페이지 제목이 다른 요소와 겹쳐서 안 보여. 제목을 위로 옮겨줘.",
             "reply_markup": {"force_reply": True, "input_field_placeholder": "수정하고 싶은 점을 적어줘"}})
     if ok and chat_id and message_id:  # 미리보기 글은 그대로 두고 버튼만 결과로 바꾼다
-        tg_call("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": message_id, "reply_markup": {
+        tg_try("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": message_id, "reply_markup": {
             "inline_keyboard": [[{"text": f"{text.split(' · ')[0]} · {by}", "callback_data": f"card:noop:{card_id}"}]]}})
 
 
+def cancel_edit(card_id: int, by: str) -> tuple[bool, str]:
+    """[취소]: 새 카드가 아직 안 만들어졌으면 수정 요청을 지우고 승인 대기로 되돌린다."""
+    changed = sb_patch("cards", {"id": f"eq.{card_id}", "approval": "in.(regenerate,edit_requested)", "published": "is.false"},
+                       {"approval": "pending", "revision_request": None, "approved_by": by[:100]})
+    if not changed:
+        return False, "이미 새 카드를 만들었거나 처리된 카드라 취소할 수 없어요."
+    return True, "↩️ 수정 요청을 취소했어요 · 다시 승인 대기예요"
+
+
+def _card_from_reply(message: dict) -> int | None:
+    """미리보기 글(🆕 승인 요청 · card N)이나 봇 안내 글에 답장했으면 그 카드 번호."""
+    replied = message.get("reply_to_message") or {}
+    m = re.search(r"card (\d+)", (replied.get("text") or replied.get("caption") or ""))
+    return int(m.group(1)) if m else None
+
+
+def _target_card(message: dict, chat_id: int) -> dict | None:
+    """수정 요청을 붙일 카드: ① [수정 요청] 버튼을 누른 카드 ② 답장한 미리보기의 카드 ③ 가장 최근 승인 대기 카드."""
+    cols = "id,category,news_item_id,approval,published"
+    rows = sb_get("cards", {"select": cols, "approval": "eq.edit_requested",
+                             "approval_chat_id": f"eq.{chat_id}", "order": "created_at.desc", "limit": "1"})
+    if rows:
+        return rows[0]
+    open_states = "in.(pending,regenerate,edit_requested)"
+    card_id = _card_from_reply(message)
+    if card_id:
+        rows = sb_get("cards", {"select": cols, "id": f"eq.{card_id}", "approval": open_states, "published": "is.false"})
+        return rows[0] if rows else None
+    if not TELEGRAM_CHAT_ID or str(chat_id) != TELEGRAM_CHAT_ID or len(message.get("text", "").strip()) < 6:
+        return None  # 모르는 채팅이거나 "ㅇㅋ" 같은 짧은 글은 최근 카드에 붙이지 않는다
+    since = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    rows = sb_get("cards", {"select": cols, "approval": open_states, "published": "is.false",
+                             "created_at": f"gte.{since}", "order": "created_at.desc", "limit": "5"})
+    rows = [r for r in rows if approval_channel(r["category"])]
+    return rows[0] if rows else None
 
 
 def handle_edit_message(message: dict) -> bool:
-    """수정 요청 버튼 뒤에 보낸 텍스트를 다음 재생성 작업에 저장한다."""
+    """카드 승인 봇에 온 글을 수정 요청으로 저장한다(2026-11-14: 버튼 없이 답장·글만 보내도 저장).
+    저장하면 approval=regenerate → PC 10분 작업이 revision_request를 반영해 새 카드를 다시 보낸다."""
     text = (message.get("text") or "").strip()
     chat_id = message.get("chat", {}).get("id")
-    sender = message.get("from", {})
     if not text or chat_id is None:
         return False
-    rows = sb_get("cards", {"select": "id,category,news_item_id", "approval": "eq.edit_requested",
-                             "approval_chat_id": f"eq.{chat_id}", "order": "created_at.desc", "limit": "1"})
-    if not rows:
-        return False
-    card = rows[0]
-    by = "@" + sender["username"] if sender.get("username") else f"telegram:{sender.get('id')}"
-    sb_patch("cards", {"id": f"eq.{card['id']}", "approval": "eq.edit_requested"},
-             {"approval": "regenerate", "revision_request": text[:2000], "approved_by": by[:100]})
-    tg_call("sendMessage", {"chat_id": chat_id,
-        "text": f"✅ 수정 요청을 저장했어(card {card['id']}).\n내용: {text[:500]}\n다음 작업에서 이 내용을 반영해 새 카드 미리보기를 보낼게.",
+    if text.startswith("/"):
+        tg_try("sendMessage", {"chat_id": chat_id, "text": "카드를 고치고 싶으면 카드 미리보기 글에 답장으로 바꿀 점을 보내줘."})
+        return True
+    card = _target_card(message, chat_id)
+    if not card:
+        tg_try("sendMessage", {"chat_id": chat_id, "text":
+            "어느 카드에 대한 수정인지 못 찾았어(승인 대기 중인 디징 카드가 없거나 이미 처리됨).\n"
+            "카드 미리보기 글(🆕 승인 요청 · card N)에 답장으로 보내줘."})
+        return True
+    by = _sender_name(message.get("from", {}))
+    changed = sb_patch("cards", {"id": f"eq.{card['id']}", "approval": "in.(pending,regenerate,edit_requested)",
+                                 "published": "is.false"},
+                       {"approval": "regenerate", "revision_request": text[:2000], "approved_by": by[:100],
+                        "approved_at": datetime.now(timezone.utc).isoformat(), "approval_chat_id": chat_id})
+    if not changed:
+        tg_try("sendMessage", {"chat_id": chat_id, "text": f"card {card['id']}는 방금 다른 곳에서 처리돼서 저장하지 못했어."})
+        return True
+    ch = approval_channel(card["category"]) or {}
+    note = ""
+    if card.get("news_item_id") and ch.get("max_regenerations"):
+        done = sb_get("cards", {"select": "id", "news_item_id": f"eq.{card['news_item_id']}", "regenerated_from": "not.is.null"})
+        if len(done) >= ch["max_regenerations"]:
+            note = f"\n⚠️ 같은 공고는 다시 만들기 {ch['max_regenerations']}번을 다 써서 새 카드는 안 만들어져. 내용은 피드백 장부에 남아."
+    try:
+        sb_post("pipeline_events", {"run_id": f"webhook-{int(time.time())}", "channel": ch.get("key"), "stage": "approval",
+                                    "status": "success", "category": card["category"], "card_id": card["id"],
+                                    "news_item_id": card.get("news_item_id"), "message": f"✏️ 수정 요청 저장 ({by}): {text[:80]}"})
+    except Exception:
+        pass
+    tg_try("sendMessage", {"chat_id": chat_id,
+        "text": f"✅ card {card['id']} 수정 요청을 저장했어.\n내용: {text[:500]}\n10분 안에 이 내용을 반영한 새 카드 미리보기를 보낼게.{note}",
         "reply_markup": {"inline_keyboard": [[
-            {"text": "✅ 게시", "callback_data": f"card:approve:{card['id']}"},
-            {"text": "⏭ 건너뛰기", "callback_data": f"card:reject:{card['id']}"}
+            {"text": "↩️ 취소", "callback_data": f"card:cancel_edit:{card['id']}"}
         ]]}})
     return True
 
@@ -786,14 +865,25 @@ async def telegram_webhook(
         raise HTTPException(status_code=401, detail="invalid secret token")
 
     update = await request.json()
+    # 디징 카드 처리 오류는 기록만 하고 200을 돌려준다(500이면 텔레그램이 같은 요청을 계속 다시 보낸다).
     message = update.get("message")
-    if message and handle_edit_message(message):
+    if message:
+        try:
+            handle_edit_message(message)
+        except Exception as e:
+            print(f"[webhook] 수정 요청 글 처리 실패: {e}")
+            tg_try("sendMessage", {"chat_id": message.get("chat", {}).get("id"), "text": f"⚠️ 수정 요청 저장 중 오류가 났어: {str(e)[:200]}"})
         return {"ok": True}
     callback_query = update.get("callback_query")
     if not callback_query:
         return {"ok": True}
     if callback_query.get("data", "").startswith("card:"):
-        handle_card_callback(callback_query)
+        try:
+            handle_card_callback(callback_query)
+        except Exception as e:
+            print(f"[webhook] 카드 버튼 처리 실패: {e}")
+            tg_try("answerCallbackQuery", {"callback_query_id": callback_query.get("id"),
+                                           "text": f"오류가 났어요: {str(e)[:150]}", "show_alert": True})
         return {"ok": True}
 
     callback_id = callback_query["id"]
